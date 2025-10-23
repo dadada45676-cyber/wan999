@@ -193,65 +193,41 @@ export class AuthService {
           throw new Error('权限不足，只有管理员可以创建用户')
         }
 
-        // 检查邮箱是否已存在
-        const { data: existingUser, error: checkError } = await supabase
-          .from('user_profiles')
-          .select('email')
-          .eq('email', form.email)
-          .single()
-
-        if (checkError && checkError.code !== 'PGRST116') {
-          throw new Error('检查用户邮箱时发生错误')
-        }
-
-        if (existingUser) {
-          throw new Error('该邮箱已被使用')
-        }
-
-        // 生成临时用户ID（UUID格式）
-        const tempUserId = crypto.randomUUID()
-
-        // 创建用户档案记录
-        const { data: profile, error: insertError } = await supabase
-          .from('user_profiles')
-          .insert({
-            id: tempUserId,
-            name: form.name,
+        // 调用 Supabase Edge Function 创建用户
+        const { data: functionResult, error: functionError } = await supabase.functions.invoke('create-user', {
+          body: {
             email: form.email,
+            password: form.password,
+            name: form.name,
             role: form.role,
             department: form.department || '',
             phone: form.phone || '',
             status: form.status || 'active',
-            created_by: session.user.id,
-            must_change_password: true, // 新用户必须修改密码
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single()
+            sendWelcomeEmail: form.sendWelcomeEmail || false
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        })
 
-        if (insertError) {
-          throw new Error(insertError.message || '用户创建失败')
+        if (functionError) {
+          throw new Error(functionError.message || '用户创建失败')
         }
 
-        // 记录审计日志
-        await supabase
-          .from('audit_logs')
-          .insert({
-            user_id: session.user.id,
-            action: 'user.create',
-            resource_type: 'user',
-            resource_id: profile.id,
-            details: {
-              email: form.email,
-              name: form.name,
-              role: form.role,
-              created_user_id: profile.id
-            },
-            ip_address: 'unknown',
-            user_agent: navigator.userAgent || 'unknown',
-            timestamp: new Date().toISOString()
-          })
+        if (!functionResult || functionResult.error) {
+          throw new Error(functionResult?.error || '用户创建失败')
+        }
+
+        // 获取创建的用户信息
+        const { data: profile, error: profileFetchError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', functionResult.user.id)
+          .single()
+
+        if (profileFetchError || !profile) {
+          throw new Error('用户创建成功，但获取用户信息失败')
+        }
 
         const user = this.mapProfileToUser(profile)
         return {

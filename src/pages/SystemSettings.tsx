@@ -110,20 +110,8 @@ const SystemSettings: React.FC = () => {
     smsProviders: ['移动', '联通', '电信', '虚拟运营商'],
     sources: ['来源1', '来源2', '来源3', '来源4'],
     gamePlatforms: ['平台A', '平台B', '平台C', '平台D'],
-    countries: [
-      { value: 'CN', label: '中国' },
-      { value: 'US', label: '美国' },
-      { value: 'JP', label: '日本' },
-      { value: 'KR', label: '韩国' },
-      { value: 'OTHER', label: '其他' }
-    ],
-    ratings: [
-      { value: '1', label: '1星' },
-      { value: '2', label: '2星' },
-      { value: '3', label: '3星' },
-      { value: '4', label: '4星' },
-      { value: '5', label: '5星' }
-    ]
+    countries: ['中国', '美国', '日本', '韩国', '其他'],
+    ratings: ['1星', '2星', '3星', '4星', '5星']
   });
 
   // 系统配置
@@ -467,7 +455,8 @@ const SystemSettings: React.FC = () => {
       smsProviders: '短信商',
       sources: '数据来源',
       gamePlatforms: '游戏平台',
-      countries: '国家地区'
+      countries: '国家地区',
+      ratings: '评级选项'
     };
     
     const categoryName = categoryNames[category as keyof typeof categoryNames] || category;
@@ -1073,7 +1062,8 @@ const SystemSettings: React.FC = () => {
                       {category === 'smsProviders' ? '短信商' :
                        category === 'sources' ? '数据来源' :
                        category === 'gamePlatforms' ? '游戏平台' :
-                       category === 'countries' ? '国家地区' : category}
+                       category === 'countries' ? '国家地区' :
+                       category === 'ratings' ? '评级选项' : category}
                     </h4>
                     <div className="space-y-2">
                       {options.map((option, index) => (
@@ -1583,11 +1573,12 @@ const SystemSettings: React.FC = () => {
         isOpen={userManagementState.showCreateModal}
         onClose={() => setUserManagementState(prev => ({ ...prev, showCreateModal: false }))}
         onSubmit={async (userData) => {
-          try {
-            await createUser(userData)
+          const result = await createUser(userData)
+          if (result) {
+            success('用户创建成功')
             setUserManagementState(prev => ({ ...prev, showCreateModal: false }))
-          } catch (error) {
-            // 创建用户失败
+          } else {
+            error('用户创建失败，请检查输入信息')
           }
         }}
         formData={userForm}
@@ -1600,11 +1591,12 @@ const SystemSettings: React.FC = () => {
         onClose={() => setUserManagementState(prev => ({ ...prev, showEditModal: false }))}
         onSubmit={async (userData) => {
           if (userManagementState.selectedUser) {
-            try {
-              await updateUser(userManagementState.selectedUser.id, userData)
+            const result = await updateUser(userManagementState.selectedUser.id, userData)
+            if (result) {
+              success('用户信息更新成功')
               setUserManagementState(prev => ({ ...prev, showEditModal: false, selectedUser: null }))
-            } catch (error) {
-              // 更新用户失败
+            } else {
+              error('用户信息更新失败，请检查输入信息')
             }
           }
         }}
