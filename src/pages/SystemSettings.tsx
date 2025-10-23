@@ -105,25 +105,13 @@ const SystemSettings: React.FC = () => {
     type: 'warning' as 'danger' | 'warning' | 'info'
   });
 
-  // 下拉选项管理
+  // 下拉选项管理 - 统一为字符串数组结构
   const [dropdownOptions, setDropdownOptions] = useState({
     smsProviders: ['移动', '联通', '电信', '虚拟运营商'],
     sources: ['来源1', '来源2', '来源3', '来源4'],
     gamePlatforms: ['平台A', '平台B', '平台C', '平台D'],
-    countries: [
-      { value: 'CN', label: '中国' },
-      { value: 'US', label: '美国' },
-      { value: 'JP', label: '日本' },
-      { value: 'KR', label: '韩国' },
-      { value: 'OTHER', label: '其他' }
-    ],
-    ratings: [
-      { value: '1', label: '1星' },
-      { value: '2', label: '2星' },
-      { value: '3', label: '3星' },
-      { value: '4', label: '4星' },
-      { value: '5', label: '5星' }
-    ]
+    countries: ['中国', '美国', '日本', '韩国', '其他'],
+    ratings: ['1星', '2星', '3星', '4星', '5星']
   });
 
   // 系统配置
@@ -181,16 +169,20 @@ const SystemSettings: React.FC = () => {
           if (settings.finalGradeConfig) {
             setFinalGradeConfig(settings.finalGradeConfig);
           }
-          if (settings.countryOptions || settings.ratingOptions || settings.smsProviders || settings.sources || settings.gamePlatforms) {
-            setDropdownOptions(prev => ({
-              ...prev,
-              countries: settings.countryOptions || prev.countries,
-              ratings: settings.ratingOptions || prev.ratings,
-              smsProviders: settings.smsProviders || prev.smsProviders,
-              sources: settings.sources || prev.sources,
-              gamePlatforms: settings.gamePlatforms || prev.gamePlatforms
-            }));
-          }
+          // 修复下拉选项数据加载逻辑 - 处理对象数组转字符串数组
+          setDropdownOptions(prev => ({
+            smsProviders: settings.smsProviders || prev.smsProviders,
+            sources: settings.sources || prev.sources,
+            gamePlatforms: settings.gamePlatforms || prev.gamePlatforms,
+            countries: settings.countryOptions ? 
+              (Array.isArray(settings.countryOptions) && settings.countryOptions.length > 0 && typeof settings.countryOptions[0] === 'object' ?
+                settings.countryOptions.map((item: any) => item.label || item.value || item) :
+                settings.countryOptions) : prev.countries,
+            ratings: settings.ratingOptions ? 
+              (Array.isArray(settings.ratingOptions) && settings.ratingOptions.length > 0 && typeof settings.ratingOptions[0] === 'object' ?
+                settings.ratingOptions.map((item: any) => item.label || item.value || item) :
+                settings.ratingOptions) : prev.ratings
+          }));
           if (settings.minRatingCount !== undefined || settings.timeDecayFactor !== undefined || settings.ratingScoreMap) {
             setSystemConfig(prev => ({
               ...prev,
@@ -231,12 +223,16 @@ const SystemSettings: React.FC = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // 构建更新数据
+      // 构建更新数据 - 包含所有下拉选项
       const updates = {
         packageGradeThresholds,
         breakEvenConfig,
         scoringAlgorithm,
         finalGradeConfig,
+        // 保存所有下拉选项
+        smsProviders: dropdownOptions.smsProviders,
+        sources: dropdownOptions.sources,
+        gamePlatforms: dropdownOptions.gamePlatforms,
         countryOptions: dropdownOptions.countries,
         ratingOptions: dropdownOptions.ratings,
         minRatingCount: systemConfig.minRatingCount,

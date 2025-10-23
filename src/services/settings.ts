@@ -15,36 +15,57 @@ export class SettingsService {
   static async getSettings(): Promise<ServiceResponse<SystemSettings>> {
     const result = await APIUtils.apiCall(
       async () => {
-        // 查询所有系统设置
-        const { data, error } = await supabase
-          .from('system_settings')
-          .select('setting_key, setting_value')
+        try {
+          // 查询所有系统设置
+          const { data, error } = await supabase
+            .from('system_settings')
+            .select('setting_key, setting_value')
 
-        if (error) {
-          throw new Error(error.message)
+          if (error) {
+            logger.warn('[SettingsService] 数据库查询失败，使用默认设置:', error.message)
+            // 数据库查询失败时返回默认设置
+            return { success: true, data: this.getDefaultSettings() }
+          }
+
+          if (!data || data.length === 0) {
+            logger.info('[SettingsService] 未找到系统设置，返回默认设置')
+            // 设置不存在，返回默认设置
+            return { success: true, data: this.getDefaultSettings() }
+          }
+
+          // 将数据库记录转换为 SystemSettings 对象
+          const settings = this.mapDatabaseRecordsToSettings(data)
+          logger.info('[SettingsService] 成功获取系统设置')
+          return { success: true, data: settings }
+        } catch (dbError) {
+          logger.warn('[SettingsService] 数据库操作异常，使用默认设置:', dbError)
+          // 任何数据库异常都返回默认设置，确保系统可用
+          return { success: true, data: this.getDefaultSettings() }
         }
-
-        if (!data || data.length === 0) {
-          // 设置不存在，创建默认设置
-          return this.createDefaultSettings()
-        }
-
-        // 将数据库记录转换为 SystemSettings 对象
-        const settings = this.mapDatabaseRecordsToSettings(data)
-        return { success: true, data: settings }
       },
       {
         cache: false, // 暂时禁用缓存
-        timeout: 10000, // 增加超时时间到10秒
+        timeout: 5000, // 减少超时时间到5秒
         retries: 1, // 减少重试次数
         operation: 'getSystemSettings'
       }
     )
     
-    return {
-      success: result.success,
-      data: result.data?.data,
-      error: result.error?.message
+    // 确保总是返回有效数据
+    if (result.success && result.data?.data) {
+      return {
+        success: true,
+        data: result.data.data,
+        error: undefined
+      }
+    } else {
+      // 如果API调用失败，返回默认设置
+      logger.warn('[SettingsService] API调用失败，返回默认设置')
+      return {
+        success: true,
+        data: this.getDefaultSettings(),
+        error: undefined
+      }
     }
   }
 

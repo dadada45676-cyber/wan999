@@ -193,40 +193,55 @@ export class AuthService {
           throw new Error('权限不足，只有管理员可以创建用户')
         }
 
-        // 调用 Supabase Edge Function 创建用户
-        const { data: functionResult, error: functionError } = await supabase.functions.invoke('create-user', {
-          body: {
+        // 直接使用Supabase Auth Admin API创建用户
+        const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+          email: form.email,
+          password: form.password,
+          email_confirm: true, // 自动确认邮箱
+          user_metadata: {
+            name: form.name,
+            role: form.role,
+            department: form.department || '',
+            phone: form.phone || '',
+            status: form.status || 'active'
+          }
+        })
+
+        if (authError) {
+          throw new Error(authError.message || '用户创建失败')
+        }
+
+        if (!authUser.user) {
+          throw new Error('用户创建失败：未返回用户信息')
+        }
+
+        // 创建用户档案记录
+        const { data: profile, error: profileInsertError } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: authUser.user.id,
             email: form.email,
-            password: form.password,
             name: form.name,
             role: form.role,
             department: form.department || '',
             phone: form.phone || '',
             status: form.status || 'active',
-            sendWelcomeEmail: form.sendWelcomeEmail || false
-          },
-          headers: {
-            Authorization: `Bearer ${session.access_token}`
-          }
-        })
-
-        if (functionError) {
-          throw new Error(functionError.message || '用户创建失败')
-        }
-
-        if (!functionResult || functionResult.error) {
-          throw new Error(functionResult?.error || '用户创建失败')
-        }
-
-        // 获取创建的用户信息
-        const { data: profile, error: profileFetchError } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', functionResult.user.id)
+            created_by: session.user.id,
+            must_change_password: false,
+            login_count: 0,
+            login_attempts: 0
+          })
+          .select()
           .single()
 
-        if (profileFetchError || !profile) {
-          throw new Error('用户创建成功，但获取用户信息失败')
+        if (profileInsertError) {
+          // 如果档案创建失败，删除已创建的认证用户
+          await supabase.auth.admin.deleteUser(authUser.user.id)
+          throw new Error(`用户档案创建失败: ${profileInsertError.message}`)
+        }
+
+        if (!profile) {
+          throw new Error('用户档案创建失败：未返回档案信息')
         }
 
         const user = this.mapProfileToUser(profile)
