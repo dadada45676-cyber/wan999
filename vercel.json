@@ -7,21 +7,10 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "regions": ["hkg1", "sin1"],
-  "functions": {
-    "app/api/**/*.js": {
-      "runtime": "nodejs18.x",
-      "memory": 1024,
-      "maxDuration": 30
-    }
-  },
 
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/((?!api).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ],
