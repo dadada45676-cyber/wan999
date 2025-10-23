@@ -110,8 +110,20 @@ const SystemSettings: React.FC = () => {
     smsProviders: ['移动', '联通', '电信', '虚拟运营商'],
     sources: ['来源1', '来源2', '来源3', '来源4'],
     gamePlatforms: ['平台A', '平台B', '平台C', '平台D'],
-    countries: ['中国', '美国', '日本', '韩国', '其他'],
-    ratings: ['1星', '2星', '3星', '4星', '5星']
+    countries: [
+      { value: 'CN', label: '中国' },
+      { value: 'US', label: '美国' },
+      { value: 'JP', label: '日本' },
+      { value: 'KR', label: '韩国' },
+      { value: 'OTHER', label: '其他' }
+    ],
+    ratings: [
+      { value: '1', label: '1星' },
+      { value: '2', label: '2星' },
+      { value: '3', label: '3星' },
+      { value: '4', label: '4星' },
+      { value: '5', label: '5星' }
+    ]
   });
 
   // 系统配置
@@ -285,25 +297,7 @@ const SystemSettings: React.FC = () => {
       { name: 'D', minScore: 40, maxScore: 54, color: '#EF4444' },
       { name: 'E', minScore: 0, maxScore: 39, color: '#6B7280' }
     ]);
-    setDropdownOptions({
-      smsProviders: ['移动', '联通', '电信', '虚拟运营商'],
-      sources: ['来源1', '来源2', '来源3', '来源4'],
-      gamePlatforms: ['平台A', '平台B', '平台C', '平台D'],
-      countries: [
-        { value: 'CN', label: '中国' },
-        { value: 'US', label: '美国' },
-        { value: 'JP', label: '日本' },
-        { value: 'KR', label: '韩国' },
-        { value: 'OTHER', label: '其他' }
-      ],
-      ratings: [
-        { value: '1', label: '1星' },
-        { value: '2', label: '2星' },
-        { value: '3', label: '3星' },
-        { value: '4', label: '4星' },
-        { value: '5', label: '5星' }
-      ]
-    });
+
     setSystemConfig({
       autoBackup: true,
       backupInterval: 24,
