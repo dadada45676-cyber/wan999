@@ -211,7 +211,6 @@ const SystemSettings: React.FC = () => {
           setHasChanges(false);
         }
       } catch (error) {
-        console.error('加载系统设置失败:', error);
         // 使用默认设置，不显示错误提示，避免影响用户体验
       } finally {
         setIsLoading(false);
