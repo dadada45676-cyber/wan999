@@ -207,11 +207,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   // 检查认证状态
   checkAuth: async (): Promise<boolean> => {
+    // 设置加载状态
+    set({ isLoading: true, error: null })
+    
     try {
       const user = await AuthService.getCurrentUser()
       
       if (!user) {
-        set({ isAuthenticated: false, user: null, token: null })
+        set({ 
+          isAuthenticated: false, 
+          user: null, 
+          token: null,
+          isLoading: false 
+        })
         return false
       }
       
@@ -219,12 +227,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ 
         isAuthenticated: true, 
         user, 
-        token: null // Token由Supabase管理
+        token: null, // Token由Supabase管理
+        isLoading: false
       })
       
       return true
-    } catch {
-      set({ isAuthenticated: false, user: null, token: null })
+    } catch (error) {
+      set({ 
+        isAuthenticated: false, 
+        user: null, 
+        token: null,
+        isLoading: false,
+        error: error instanceof Error ? error.message : '认证检查失败'
+      })
       return false
     }
   },

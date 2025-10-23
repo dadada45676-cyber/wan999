@@ -20,8 +20,9 @@ function App() {
 
   // 检查认证状态
   useEffect(() => {
+    // 页面加载时检查认证状态
     checkAuth()
-  }, [checkAuth])
+  }, []) // 移除checkAuth依赖，避免重复调用
 
   // 检查是否需要显示首次登录密码修改模态框
   useEffect(() => {

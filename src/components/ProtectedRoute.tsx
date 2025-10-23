@@ -26,10 +26,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // 检查认证状态
   useEffect(() => {
+    // 只有在未认证且未加载时才检查认证状态
     if (!isAuthenticated && !isLoading) {
       checkAuth()
     }
-  }, [isAuthenticated, isLoading]) // 移除checkAuth依赖
+  }, [isAuthenticated, isLoading, checkAuth])
 
   // 加载中状态
   if (isLoading) {
