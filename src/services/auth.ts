@@ -176,41 +176,84 @@ export class AuthService {
   static async createUser(form: CreateUserForm): Promise<{ success: boolean; error?: string; user?: User }> {
     const response = await APIUtils.apiCall(
       async () => {
-        // 获取当前用户的 session token
+        // 获取当前用户的 session
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
           throw new Error('用户未登录')
         }
 
-        // 调用 Edge Function 创建用户
-        const { data, error } = await supabase.functions.invoke('create-user', {
-          body: {
-            email: form.email,
-            password: form.password,
+        // 检查当前用户是否为管理员
+        const { data: currentUserProfile, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+
+        if (profileError || !currentUserProfile || currentUserProfile.role !== 'admin') {
+          throw new Error('权限不足，只有管理员可以创建用户')
+        }
+
+        // 检查邮箱是否已存在
+        const { data: existingUser, error: checkError } = await supabase
+          .from('user_profiles')
+          .select('email')
+          .eq('email', form.email)
+          .single()
+
+        if (checkError && checkError.code !== 'PGRST116') {
+          throw new Error('检查用户邮箱时发生错误')
+        }
+
+        if (existingUser) {
+          throw new Error('该邮箱已被使用')
+        }
+
+        // 生成临时用户ID（UUID格式）
+        const tempUserId = crypto.randomUUID()
+
+        // 创建用户档案记录
+        const { data: profile, error: insertError } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: tempUserId,
             name: form.name,
+            email: form.email,
             role: form.role,
-            department: form.department,
-            phone: form.phone,
-            status: form.status || 'active'
-          },
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        })
+            department: form.department || '',
+            phone: form.phone || '',
+            status: form.status || 'active',
+            created_by: session.user.id,
+            must_change_password: true, // 新用户必须修改密码
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single()
 
-        if (error) {
-          throw new Error(error.message || '用户创建失败')
+        if (insertError) {
+          throw new Error(insertError.message || '用户创建失败')
         }
 
-        if (data?.error) {
-          throw new Error(data.error)
-        }
+        // 记录审计日志
+        await supabase
+          .from('audit_logs')
+          .insert({
+            user_id: session.user.id,
+            action: 'user.create',
+            resource_type: 'user',
+            resource_id: profile.id,
+            details: {
+              email: form.email,
+              name: form.name,
+              role: form.role,
+              created_user_id: profile.id
+            },
+            ip_address: 'unknown',
+            user_agent: navigator.userAgent || 'unknown',
+            timestamp: new Date().toISOString()
+          })
 
-        if (!data?.user) {
-          throw new Error('用户创建失败，请重试')
-        }
-
-        const user = this.mapProfileToUser(data.user)
+        const user = this.mapProfileToUser(profile)
         return {
           success: true,
           user

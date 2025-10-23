@@ -149,11 +149,71 @@ const SystemSettings: React.FC = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 初始化数据加载
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setIsLoading(true);
+        const result = await SettingsService.getSettings();
+        
+        if (result.success && result.data) {
+          const settings = result.data;
+          
+          // 更新各个配置状态
+          if (settings.packageGradeThresholds) {
+            setPackageGradeThresholds(settings.packageGradeThresholds);
+          }
+          if (settings.breakEvenConfig) {
+            setBreakEvenConfig(settings.breakEvenConfig);
+          }
+          if (settings.scoringAlgorithm) {
+            setScoringAlgorithm(settings.scoringAlgorithm);
+          }
+          if (settings.finalGradeConfig) {
+            setFinalGradeConfig(settings.finalGradeConfig);
+          }
+          if (settings.countryOptions || settings.ratingOptions || settings.smsProviders || settings.sources || settings.gamePlatforms) {
+            setDropdownOptions(prev => ({
+              ...prev,
+              countries: settings.countryOptions || prev.countries,
+              ratings: settings.ratingOptions || prev.ratings,
+              smsProviders: settings.smsProviders || prev.smsProviders,
+              sources: settings.sources || prev.sources,
+              gamePlatforms: settings.gamePlatforms || prev.gamePlatforms
+            }));
+          }
+          if (settings.minRatingCount !== undefined || settings.timeDecayFactor !== undefined || settings.ratingScoreMap) {
+            setSystemConfig(prev => ({
+              ...prev,
+              minRatingCount: settings.minRatingCount ?? prev.minRatingCount,
+              timeDecayFactor: settings.timeDecayFactor ?? prev.timeDecayFactor,
+              ratingScoreMap: settings.ratingScoreMap || prev.ratingScoreMap
+            }));
+          }
+          
+          // 更新全局状态
+          setSystemSettings(settings);
+          setHasChanges(false);
+        }
+      } catch (error) {
+        console.error('加载系统设置失败:', error);
+        // 使用默认设置，不显示错误提示，避免影响用户体验
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSettings();
+  }, [setSystemSettings]);
 
   // 监听配置变化
   useEffect(() => {
-    setHasChanges(true);
-  }, [packageGradeThresholds, breakEvenConfig, scoringAlgorithm, finalGradeConfig, dropdownOptions, systemConfig]);
+    if (!isLoading) {
+      setHasChanges(true);
+    }
+  }, [packageGradeThresholds, breakEvenConfig, scoringAlgorithm, finalGradeConfig, dropdownOptions, systemConfig, isLoading]);
 
   // 保存配置
   const handleSave = async () => {
@@ -549,8 +609,23 @@ const SystemSettings: React.FC = () => {
 
         {/* 右侧内容区域 */}
         <div className="lg:col-span-3 space-y-8">
-          {/* 号码包评级配置 */}
-          {activeTab === 'packageGrade' && (
+          {isLoading ? (
+            <div className="relative overflow-hidden bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-8">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-indigo-50/50"></div>
+              <div className="relative flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full mb-4 animate-spin">
+                    <Settings className="h-8 w-8 text-white" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-700 mb-2">加载系统设置中...</h3>
+                  <p className="text-slate-500">正在从服务器获取配置数据</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* 号码包评级配置 */}
+              {activeTab === 'packageGrade' && (
             <div className="relative overflow-hidden bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl p-8">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-indigo-50/50"></div>
               <div className="relative">
@@ -1485,6 +1560,8 @@ const SystemSettings: React.FC = () => {
           {/* 安全设置 */}
           {activeTab === 'security' && (
             <SecuritySettings />
+          )}
+            </>
           )}
         </div>
       </div>

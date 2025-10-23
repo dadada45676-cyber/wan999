@@ -109,14 +109,17 @@ export class SettingsService {
 
         logger.info('[SettingsService] 开始更新系统设置，用户权限验证通过', { userId: user.id, role: userProfile.role })
 
-        // 构建更新数组
+        // 构建更新数组 - 使用正确的 upsert 语法，指定冲突解决策略
         const updatePromises: any[] = []
         
         if (updates.packageGradeThresholds) {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'package_grade_thresholds', setting_value: updates.packageGradeThresholds, category: 'package' })
+              .upsert(
+                { setting_key: 'package_grade_thresholds', setting_value: updates.packageGradeThresholds, category: 'package' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -124,7 +127,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'break_even_config', setting_value: updates.breakEvenConfig, category: 'package' })
+              .upsert(
+                { setting_key: 'break_even_config', setting_value: updates.breakEvenConfig, category: 'package' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -132,7 +138,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'final_grade_config', setting_value: updates.finalGradeConfig, category: 'grade' })
+              .upsert(
+                { setting_key: 'final_grade_config', setting_value: updates.finalGradeConfig, category: 'grade' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -140,7 +149,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'scoring_algorithm', setting_value: updates.scoringAlgorithm, category: 'algorithm' })
+              .upsert(
+                { setting_key: 'scoring_algorithm', setting_value: updates.scoringAlgorithm, category: 'algorithm' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -148,7 +160,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'country_options', setting_value: updates.countryOptions, category: 'dropdown' })
+              .upsert(
+                { setting_key: 'country_options', setting_value: updates.countryOptions, category: 'dropdown' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -156,7 +171,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'rating_options', setting_value: updates.ratingOptions, category: 'dropdown' })
+              .upsert(
+                { setting_key: 'rating_options', setting_value: updates.ratingOptions, category: 'dropdown' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -164,7 +182,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'sms_providers', setting_value: updates.smsProviders, category: 'dropdown' })
+              .upsert(
+                { setting_key: 'sms_providers', setting_value: updates.smsProviders, category: 'dropdown' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -172,7 +193,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'sources', setting_value: updates.sources, category: 'dropdown' })
+              .upsert(
+                { setting_key: 'sources', setting_value: updates.sources, category: 'dropdown' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -180,7 +204,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'game_platforms', setting_value: updates.gamePlatforms, category: 'dropdown' })
+              .upsert(
+                { setting_key: 'game_platforms', setting_value: updates.gamePlatforms, category: 'dropdown' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -188,7 +215,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'min_rating_count', setting_value: updates.minRatingCount, category: 'algorithm' })
+              .upsert(
+                { setting_key: 'min_rating_count', setting_value: updates.minRatingCount, category: 'algorithm' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -196,7 +226,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'time_decay_factor', setting_value: updates.timeDecayFactor, category: 'algorithm' })
+              .upsert(
+                { setting_key: 'time_decay_factor', setting_value: updates.timeDecayFactor, category: 'algorithm' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -204,7 +237,10 @@ export class SettingsService {
           updatePromises.push(
             supabase
               .from('system_settings')
-              .upsert({ setting_key: 'rating_score_map', setting_value: updates.ratingScoreMap, category: 'algorithm' })
+              .upsert(
+                { setting_key: 'rating_score_map', setting_value: updates.ratingScoreMap, category: 'algorithm' },
+                { onConflict: 'setting_key' }
+              )
               .select()
           )
         }
@@ -423,7 +459,7 @@ export class SettingsService {
 
     const { data, error } = await supabase
       .from('system_settings')
-      .insert(settingsArray)
+      .upsert(settingsArray, { onConflict: 'setting_key' })
       .select('setting_key, setting_value')
 
     if (error) {

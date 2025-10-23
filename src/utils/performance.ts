@@ -161,15 +161,6 @@ export class PerformanceMonitor {
     }
 
     this.metrics.set(name, metric)
-    
-    // 在开发环境下输出性能指标
-    if (import.meta.env.DEV) {
-      console.log(`Performance Metric - ${name}:`, {
-        value: `${value.toFixed(2)}${name === 'CLS' ? '' : 'ms'}`,
-        rating,
-        threshold: threshold ? `Good: <${threshold.good}, Poor: >${threshold.poor}` : 'N/A'
-      })
-    }
   }
 
   // 获取所有性能指标
@@ -221,10 +212,6 @@ export const performanceUtils = {
       const result = fn(...args)
       const end = performance.now()
       
-      if (import.meta.env.DEV) {
-        console.log(`Function ${name || fn.name} took ${(end - start).toFixed(2)}ms`)
-      }
-      
       return result
     }) as T
   },
@@ -238,10 +225,6 @@ export const performanceUtils = {
       const start = performance.now()
       const result = await fn(...args)
       const end = performance.now()
-      
-      if (import.meta.env.DEV) {
-        console.log(`Async function ${name || fn.name} took ${(end - start).toFixed(2)}ms`)
-      }
       
       return result
     }) as T

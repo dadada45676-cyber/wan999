@@ -38,11 +38,8 @@ const ADMIN_USER = {
 };
 
 async function createAdminUser() {
-  console.log('🚀 开始创建默认管理员用户...');
-  
   try {
     // 1. 检查是否已存在管理员用户
-    console.log('📋 检查现有管理员用户...');
     const { data: existingProfiles, error: profileError } = await supabase
       .from('user_profiles')
       .select('id, email, role')
@@ -54,14 +51,11 @@ async function createAdminUser() {
     }
     
     if (existingProfiles && existingProfiles.length > 0) {
-      console.log('ℹ️  已存在管理员用户:');
-      existingProfiles.forEach(profile => {
-        console.log(`   - ${profile.email} (ID: ${profile.id})`);
-      });
+      console.log('ℹ️  管理员用户已存在');
+      return;
     }
     
     // 2. 检查Auth中是否已存在该邮箱
-    console.log('🔍 检查Auth用户...');
     const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
     
     if (authError) {
@@ -72,15 +66,12 @@ async function createAdminUser() {
     const existingAuthUser = authUsers.users?.find((user: any) => user.email === ADMIN_USER.email);
     
     if (existingAuthUser) {
-      console.log(`ℹ️  Auth用户已存在: ${existingAuthUser.email} (ID: ${existingAuthUser.id})`);
-      
       // 同步到user_profiles
       await syncUserProfile(existingAuthUser.id);
       return;
     }
     
     // 3. 创建Auth用户
-    console.log('👤 创建Auth用户...');
     const { data: authData, error: createAuthError } = await supabase.auth.admin.createUser({
       email: ADMIN_USER.email,
       password: ADMIN_USER.password,
@@ -101,13 +92,11 @@ async function createAdminUser() {
       return;
     }
     
-    console.log(`✅ Auth用户创建成功: ${authData.user.email} (ID: ${authData.user.id})`);
-    
     // 4. 同步到user_profiles
     await syncUserProfile(authData.user.id);
     
     // 5. 显示登录信息
-    console.log('\n🎉 默认管理员用户创建完成!');
+    console.log('✅ 管理员用户创建完成');
     console.log('📧 邮箱:', ADMIN_USER.email);
     console.log('🔑 密码:', ADMIN_USER.password);
     console.log('⚠️  请首次登录后立即修改密码!');
@@ -118,8 +107,6 @@ async function createAdminUser() {
 }
 
 async function syncUserProfile(authUserId: string) {
-  console.log('🔄 同步用户档案...');
-  
   try {
     // 调用手动同步函数
     const { data, error } = await supabase.rpc('manual_sync_admin_user', {
@@ -130,7 +117,6 @@ async function syncUserProfile(authUserId: string) {
       console.error('❌ 同步用户档案失败:', error.message);
       
       // 如果RPC失败，尝试直接更新
-      console.log('🔄 尝试直接更新用户档案...');
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({ 
@@ -141,11 +127,7 @@ async function syncUserProfile(authUserId: string) {
       
       if (updateError) {
         console.error('❌ 直接更新用户档案也失败:', updateError.message);
-      } else {
-        console.log('✅ 用户档案直接更新成功');
       }
-    } else {
-      console.log('✅ 用户档案同步成功');
     }
     
     // 验证同步结果
@@ -157,13 +139,6 @@ async function syncUserProfile(authUserId: string) {
     
     if (verifyError) {
       console.error('❌ 验证用户档案失败:', verifyError.message);
-    } else if (profile) {
-      console.log('✅ 用户档案验证成功:');
-      console.log(`   - ID: ${profile.id}`);
-      console.log(`   - 邮箱: ${profile.email}`);
-      console.log(`   - 姓名: ${profile.name}`);
-      console.log(`   - 角色: ${profile.role}`);
-      console.log(`   - 状态: ${profile.status}`);
     }
     
   } catch (error) {
@@ -174,11 +149,10 @@ async function syncUserProfile(authUserId: string) {
 // 执行脚本
 createAdminUser()
   .then(() => {
-    console.log('\n✨ 脚本执行完成');
     process.exit(0);
   })
   .catch((error) => {
-    console.error('\n💥 脚本执行失败:', error);
+    console.error('脚本执行失败:', error);
     process.exit(1);
   });
 
