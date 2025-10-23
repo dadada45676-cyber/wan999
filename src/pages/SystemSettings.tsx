@@ -163,7 +163,14 @@ const SystemSettings: React.FC = () => {
           
           // 更新各个配置状态
           if (settings.packageGradeThresholds) {
-            setPackageGradeThresholds(settings.packageGradeThresholds);
+            setPackageGradeThresholds({
+              SS: settings.packageGradeThresholds.SS || { min: 50, max: 100 },
+              S: settings.packageGradeThresholds.S || { min: 30, max: 49 },
+              A: settings.packageGradeThresholds.A || { min: 20, max: 29 },
+              B: settings.packageGradeThresholds.B || { min: 16, max: 19 },
+              C: settings.packageGradeThresholds.C || { min: 10, max: 15 },
+              D: settings.packageGradeThresholds.D || { min: 0, max: 9 }
+            });
           }
           if (settings.breakEvenConfig) {
             setBreakEvenConfig(settings.breakEvenConfig);
