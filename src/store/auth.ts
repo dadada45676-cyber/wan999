@@ -554,7 +554,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   // 审计日志管理
   getAuditLogs: (filters?: any): AuditLog[] => {
-    let logs = get().auditLogs
+    const logs = get().auditLogs
     
     if (filters) {
       // 这里可以添加过滤逻辑

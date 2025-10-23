@@ -342,7 +342,7 @@ export class SettingsService {
       const currentSettings = await this.getSystemSettings()
       if (!currentSettings) return false
 
-      let updates: Partial<SystemSettings> = {}
+      const updates: Partial<SystemSettings> = {}
 
       switch (category) {
         case 'packageGrade':

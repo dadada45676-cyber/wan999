@@ -430,7 +430,7 @@ const PackageManagement: React.FC = () => {
 
   // 筛选、搜索和排序逻辑
   const filteredPackages = useMemo(() => {
-    let filtered = packages.filter(pkg => {
+    const filtered = packages.filter(pkg => {
       const matchesCountry = pkg.country === selectedCountry.code
       const matchesSearch = pkg.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            pkg.description.toLowerCase().includes(searchTerm.toLowerCase())
