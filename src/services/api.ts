@@ -44,7 +44,14 @@ export class APIService {
       
       // 清理应用状态
       const appStore = useAppStore.getState()
-      appStore.clearData()
+      // 重置所有数据到初始状态
+      appStore.setPackages([])
+      appStore.setPhoneRatings([])
+      appStore.setPhoneScores([])
+      appStore.setReports([])
+      appStore.setLoading(false)
+      appStore.setSelectedPackageId(null)
+      appStore.setUploadProgress(0)
       
       log.info('用户数据清理完成', undefined, 'APIService')
     } catch (error) {
