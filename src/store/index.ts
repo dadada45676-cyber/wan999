@@ -220,7 +220,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   createPackage: async (packageData) => {
     try {
       set({ loading: true })
-      const response = await PackageService.createPackage(packageData)
+      // 转换为CreatePackageForm格式
+      const createForm = {
+        name: packageData.name,
+        fileName: packageData.file_name,
+        countryCode: packageData.country_code,
+        smsProvider: packageData.sms_provider,
+        source: packageData.source,
+        gamePlatform: packageData.game_platform,
+        sendTime: packageData.send_time,
+        totalPhoneCount: packageData.phone_count,
+        firstChargeCount: packageData.first_charge_count,
+        conversionRate: packageData.conversion_rate,
+        grade: packageData.grade,
+        description: packageData.description,
+        phoneNumbers: packageData.phoneNumbers
+      }
+      const response = await PackageService.createPackage(createForm)
       if (response.success && response.package) {
         set((state) => ({ 
           packages: [...state.packages, response.package!],
@@ -349,20 +365,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   })),
   updatePhoneScore: (phoneNumber, updates) => set((state) => ({
     phoneScores: state.phoneScores.map(score => 
-      score.phoneNumber === phoneNumber ? { ...score, ...updates } : score
+      score.phone_number === phoneNumber ? { ...score, ...updates } : score
     )
   })),
   calculatePhoneScore: (phoneNumber) => {
     const state = get()
-    const ratings = state.phoneRatings.filter(r => r.phoneNumber === phoneNumber)
+    const ratings = state.phoneRatings.filter(r => r.phone_number === phoneNumber)
     
     if (ratings.length < state.settings.minRatingCount) {
       // 评级次数不足，更新状态为待评级
-      const existingScore = state.phoneScores.find(s => s.phoneNumber === phoneNumber)
+      const existingScore = state.phoneScores.find(s => s.phone_number === phoneNumber)
       if (existingScore) {
         state.updatePhoneScore(phoneNumber, { 
           status: 'pending',
-          ratingCount: ratings.length 
+          rating_count: ratings.length 
         })
       }
       return
@@ -374,14 +390,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     if (algorithm.type === 'simple') {
       // 简单平均
-      averageScore = ratings.reduce((sum, r) => sum + r.ratingScore, 0) / ratings.length
+      averageScore = ratings.reduce((sum, r) => sum + r.rating_score, 0) / ratings.length
     } else if (algorithm.type === 'weighted') {
       // 加权平均（基于包规模）
       let totalWeightedScore = 0
       let totalWeight = 0
       ratings.forEach(r => {
-        const weight = r.packageSize / 10000
-        totalWeightedScore += r.ratingScore * weight
+        const weight = r.package_size / 10000
+        totalWeightedScore += r.rating_score * weight
         totalWeight += weight
       })
       averageScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0
@@ -391,9 +407,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       let totalWeightedScore = 0
       let totalWeight = 0
       ratings.forEach(r => {
-        const daysDiff = Math.floor((currentDate.getTime() - new Date(r.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+        const daysDiff = Math.floor((currentDate.getTime() - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24))
         const timeWeight = Math.exp(-state.settings.timeDecayFactor * daysDiff)
-        totalWeightedScore += r.ratingScore * timeWeight
+        totalWeightedScore += r.rating_score * timeWeight
         totalWeight += timeWeight
       })
       averageScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0
@@ -403,30 +419,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     const status = 'active' as const
     
     // 更新或添加评分记录
-    const existingScore = state.phoneScores.find(s => s.phoneNumber === phoneNumber)
+    const existingScore = state.phoneScores.find(s => s.phone_number === phoneNumber)
     if (existingScore) {
       get().updatePhoneScore(phoneNumber, {
-        ratingCount: ratings.length,
-        averageScore,
-        weightedScore: averageScore,
-        timeDecayScore: averageScore,
-        finalGrade,
+        rating_count: ratings.length,
+        average_score: averageScore,
+        weighted_score: averageScore,
+        time_decay_score: averageScore,
+        final_grade: finalGrade,
         status,
-        lastCalculated: new Date().toISOString(),
-        algorithmType: algorithm.type
+        last_calculated: new Date().toISOString(),
+        algorithm_type: algorithm.type
       })
     } else {
       set((state) => ({
         phoneScores: [...state.phoneScores, {
           id: Math.random().toString(36).substr(2, 9),
+          phone_number: phoneNumber,
+          country_code: ratings.length > 0 ? ratings[0].country_code : 'BR',
+          rating_count: ratings.length,
+          average_score: averageScore,
+          weighted_score: averageScore, // 使用平均分作为加权分
+          time_decay_score: averageScore, // 使用平均分作为时间衰减分
+          final_grade: finalGrade,
+          status: 'active',
+          algorithm_type: algorithm.type,
+          last_calculated: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          // 保留旧字段名以兼容
           phoneNumber,
-          country: ratings.length > 0 ? ratings[0].country : 'BR',
+          country: ratings.length > 0 ? ratings[0].country_code : 'BR',
           ratingCount: ratings.length,
           averageScore,
-          weightedScore: averageScore, // 使用平均分作为加权分
-          timeDecayScore: averageScore, // 使用平均分作为时间衰减分
+          weightedScore: averageScore,
+          timeDecayScore: averageScore,
           finalGrade,
-          status: 'active',
           algorithmType: algorithm.type,
           lastCalculated: new Date().toISOString(),
           createdAt: new Date().toISOString(),
@@ -437,7 +465,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   getPhonesByGrade: (grade) => {
     const state = get()
-    return state.phoneScores.filter(score => score.finalGrade === grade && score.status === 'active')
+    return state.phoneScores.filter(score => score.final_grade === grade && score.status === 'active')
   },
   
   // 异步API方法 - 号码综合评分
@@ -461,7 +489,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (updatedScore) {
         set((state) => ({
           phoneScores: state.phoneScores.map(score => 
-            score.phoneNumber === phoneNumber ? updatedScore : score
+            score.phone_number === phoneNumber ? updatedScore : score
           ),
           loading: false
         }))
@@ -482,7 +510,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const savedScore = await PackageService.upsertPhoneScore(score)
       if (savedScore) {
         set((state) => {
-          const existingIndex = state.phoneScores.findIndex(s => s.phoneNumber === savedScore.phoneNumber)
+          const existingIndex = state.phoneScores.findIndex(s => s.phone_number === savedScore.phone_number)
           if (existingIndex >= 0) {
             return {
               phoneScores: state.phoneScores.map((s, i) => 

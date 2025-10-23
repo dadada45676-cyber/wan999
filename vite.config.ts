@@ -12,11 +12,16 @@ export default defineConfig(({ command, mode }) => {
   const isDevelopment = mode === 'development'
   
   return {
+    // 基础路径配置
+    base: '/',
+    
     // 构建配置
     build: {
       sourcemap: isProduction ? false : 'inline',
       minify: isProduction ? 'esbuild' : false,
       target: 'es2020',
+      outDir: 'dist',
+      assetsDir: 'assets',
       rollupOptions: {
         output: {
           // 代码分割
@@ -38,7 +43,19 @@ export default defineConfig(({ command, mode }) => {
       ...(isProduction && {
         cssCodeSplit: true,
         assetsInlineLimit: 4096,
-        chunkSizeWarningLimit: 1000
+        chunkSizeWarningLimit: 1000,
+        emptyOutDir: true,
+        // 启用压缩
+        reportCompressedSize: true,
+        // 优化依赖预构建
+        commonjsOptions: {
+          transformMixedEsModules: true
+        },
+        // 启用 Tree Shaking
+        treeshake: {
+          preset: 'recommended',
+          moduleSideEffects: false
+        }
       })
     },
     

@@ -61,10 +61,7 @@ const DataAnalysis: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true)
-      
-      // 使用store中的真实数据，无需额外加载
-      // 数据已通过API服务在应用初始化时加载
-      
+      // 数据已在应用初始化时加载
       setIsLoading(false)
     }
     
@@ -112,7 +109,7 @@ const DataAnalysis: React.FC = () => {
     const overallConversionRate = totalPhones > 0 ? (totalFirstCharge / totalPhones) * 10000 : 0
     
     // 保本线分析（16万分转化数为保本线）
-    const aboveBreakEven = filteredPackages.filter(pkg => pkg.conversionRate >= 16).length
+    const aboveBreakEven = filteredPackages.filter(pkg => pkg.conversion_rate >= 16).length
     const breakEvenRate = filteredPackages.length > 0 ? (aboveBreakEven / filteredPackages.length) * 100 : 0
     
     return {
@@ -128,12 +125,12 @@ const DataAnalysis: React.FC = () => {
   // 等级分布统计（基于PRD的评级标准）
   const gradeDistribution = useMemo(() => {
     const distribution = {
-      SS: filteredPackages.filter(p => p.conversionRate >= 50).length,
-      S: filteredPackages.filter(p => p.conversionRate >= 30 && p.conversionRate < 50).length,
-      A: filteredPackages.filter(p => p.conversionRate >= 20 && p.conversionRate < 30).length,
-      B: filteredPackages.filter(p => p.conversionRate >= 16 && p.conversionRate < 20).length,
-      C: filteredPackages.filter(p => p.conversionRate >= 10 && p.conversionRate < 16).length,
-      D: filteredPackages.filter(p => p.conversionRate < 10).length,
+      SS: filteredPackages.filter(p => p.conversion_rate >= 50).length,
+      S: filteredPackages.filter(p => p.conversion_rate >= 30 && p.conversion_rate < 50).length,
+      A: filteredPackages.filter(p => p.conversion_rate >= 20 && p.conversion_rate < 30).length,
+      B: filteredPackages.filter(p => p.conversion_rate >= 16 && p.conversion_rate < 20).length,
+      C: filteredPackages.filter(p => p.conversion_rate >= 10 && p.conversion_rate < 16).length,
+      D: filteredPackages.filter(p => p.conversion_rate < 10).length,
     }
     
     return Object.entries(distribution).map(([grade, count]) => ({
@@ -182,7 +179,7 @@ const DataAnalysis: React.FC = () => {
       .map((pkg, index) => ({
         rank: index + 1,
         name: pkg.name,
-        conversionRate: Math.round(pkg.conversionRate),
+        conversionRate: Math.round(pkg.conversion_rate),
         totalPhones: pkg.phoneCount,
         totalFirstCharge: pkg.firstChargeCount,
         uploadTime: pkg.uploadTime,

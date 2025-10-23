@@ -9,11 +9,14 @@ import {
   AlertCircle, 
   CheckCircle,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from 'lucide-react'
 import { useAuth, useAuthActions } from '../store/auth'
 import { LoginForm } from '../types/auth'
 import { PasswordValidator } from '../utils/auth'
+import { AuthService } from '../services/auth'
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate()
@@ -34,6 +37,11 @@ const LoginPage: React.FC = () => {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [captchaCode, setCaptchaCode] = useState('')
   const [showSuccess, setShowSuccess] = useState(false)
+  
+  // 网络诊断状态
+  const [showNetworkDiagnostics, setShowNetworkDiagnostics] = useState(false)
+  const [networkDiagnostics, setNetworkDiagnostics] = useState<any>(null)
+  const [isDiagnosing, setIsDiagnosing] = useState(false)
 
   // 如果已登录，重定向到仪表盘
   if (isAuthenticated) {
@@ -114,10 +122,10 @@ const LoginPage: React.FC = () => {
       if (response.success) {
         setShowSuccess(true)
         
-        // 延迟跳转，显示成功状态
+        // 等待状态更新完成后再跳转
         setTimeout(() => {
-          navigate('/dashboard')
-        }, 1000)
+          navigate('/dashboard', { replace: true })
+        }, 1200) // 稍微延长等待时间确保状态更新完成
       } else {
         // 如果需要验证码，重新生成
         if (response.requiresCaptcha) {
@@ -143,6 +151,30 @@ const LoginPage: React.FC = () => {
         delete newErrors[field]
         return newErrors
       })
+    }
+  }
+
+  // 网络诊断
+  const handleNetworkDiagnostics = async () => {
+    setIsDiagnosing(true)
+    setShowNetworkDiagnostics(true)
+    
+    try {
+      const diagnostics = await AuthService.diagnoseNetworkConnection()
+      setNetworkDiagnostics(diagnostics)
+    } catch (error) {
+      setNetworkDiagnostics({
+        success: false,
+        details: {
+          internetConnection: false,
+          supabaseReachable: false,
+          dnsResolution: false,
+          corsIssue: false
+        },
+        message: `诊断失败: ${error instanceof Error ? error.message : '未知错误'}`
+      })
+    } finally {
+      setIsDiagnosing(false)
     }
   }
 
@@ -172,9 +204,64 @@ const LoginPage: React.FC = () => {
 
             {/* 错误提示 */}
             {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600" />
-                <span className="text-red-800">{error}</span>
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-3 mb-3">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                  <span className="text-red-800 font-medium">登录失败</span>
+                </div>
+                <div className="text-red-700 text-sm whitespace-pre-line mb-3">
+                  {error}
+                </div>
+                {/* 网络诊断按钮 */}
+                {(error.includes('Failed to fetch') || error.includes('网络连接失败')) && (
+                  <button
+                    type="button"
+                    onClick={handleNetworkDiagnostics}
+                    disabled={isDiagnosing}
+                    className="flex items-center gap-2 px-3 py-2 text-sm bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition-colors disabled:opacity-50"
+                  >
+                    {isDiagnosing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Wifi className="w-4 h-4" />
+                    )}
+                    {isDiagnosing ? '诊断中...' : '网络诊断'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* 网络诊断结果 */}
+            {showNetworkDiagnostics && networkDiagnostics && (
+              <div className={`mb-6 p-4 border rounded-lg ${
+                networkDiagnostics.success 
+                  ? 'bg-green-50 border-green-200' 
+                  : 'bg-yellow-50 border-yellow-200'
+              }`}>
+                <div className="flex items-center gap-3 mb-3">
+                  {networkDiagnostics.success ? (
+                    <Wifi className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <WifiOff className="w-5 h-5 text-yellow-600" />
+                  )}
+                  <span className={`font-medium ${
+                    networkDiagnostics.success ? 'text-green-800' : 'text-yellow-800'
+                  }`}>
+                    网络诊断结果
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowNetworkDiagnostics(false)}
+                    className="ml-auto text-gray-400 hover:text-gray-600"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className={`text-sm whitespace-pre-line ${
+                  networkDiagnostics.success ? 'text-green-700' : 'text-yellow-700'
+                }`}>
+                  {networkDiagnostics.message}
+                </div>
               </div>
             )}
 

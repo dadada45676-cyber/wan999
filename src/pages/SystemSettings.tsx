@@ -3,6 +3,7 @@ import { Settings, Save, RotateCcw, AlertTriangle, Info, CheckCircle, Sliders, D
 import { useAppStore } from '../store'
 import { useAuth, useAuthActions } from '../store/auth'
 import { usePermissions } from '../hooks/usePermissions'
+import { useToast } from '../hooks/useToast'
 import { User, CreateUserForm as CreateUserFormType, EditUserForm as EditUserFormType, UserRole, UserStatus } from '../types/auth'
 import Breadcrumb from '../components/Breadcrumb'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -10,6 +11,8 @@ import ChangePasswordModal from '../components/ChangePasswordModal'
 import SecuritySettings from '../components/SecuritySettings'
 import CreateUserForm from '../components/CreateUserForm'
 import EditUserForm from '../components/EditUserForm'
+import ToastContainer from '../components/ToastContainer'
+import { SettingsService } from '../services/settings'
 
 const SystemSettings: React.FC = () => {
   const { settings: systemSettings, updateSettings: setSystemSettings } = useAppStore();
@@ -18,6 +21,7 @@ const SystemSettings: React.FC = () => {
   const { user: currentUser, users, auditLogs } = useAuth()
   const { createUser, updateUser, deleteUser, lockUser, unlockUser } = useAuthActions()
   const { hasPermission, isAdmin } = usePermissions()
+  const { toasts, success, error, removeToast } = useToast()
   
   // 用户管理状态
   const [userManagementState, setUserManagementState] = useState({
@@ -155,11 +159,8 @@ const SystemSettings: React.FC = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // 模拟保存过程
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // 更新全局状态
-      setSystemSettings({
+      // 构建更新数据
+      const updates = {
         packageGradeThresholds,
         breakEvenConfig,
         scoringAlgorithm,
@@ -169,13 +170,24 @@ const SystemSettings: React.FC = () => {
         minRatingCount: systemConfig.minRatingCount,
         timeDecayFactor: systemConfig.timeDecayFactor,
         ratingScoreMap: systemConfig.ratingScoreMap
-      });
+      };
+
+      // 调用真实的API保存设置
+      const result = await SettingsService.updateSettings(updates);
       
-      setHasChanges(false);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (error) {
-      // 保存配置失败
+      if (result.success) {
+        // 更新全局状态
+        setSystemSettings(updates);
+        setHasChanges(false);
+        setSaveSuccess(true);
+        success('保存成功', '系统设置已成功保存');
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        throw new Error(result.error || '保存设置失败');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '未知错误';
+      error('保存失败', `保存配置失败: ${errorMessage}`);
     } finally {
       setIsSaving(false);
     }
@@ -1532,6 +1544,9 @@ const SystemSettings: React.FC = () => {
         confirmText="确认删除"
         cancelText="取消"
       />
+
+      {/* Toast 消息容器 */}
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 };

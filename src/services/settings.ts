@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { APIUtils } from '../utils/api'
-import { log } from '../utils/logger'
+import { log as logger } from '../utils/logger'
 import type { SystemSettings, ServiceResponse } from '../types'
 
 export interface SettingsUpdateRequest {
@@ -15,26 +15,29 @@ export class SettingsService {
   static async getSettings(): Promise<ServiceResponse<SystemSettings>> {
     const result = await APIUtils.apiCall(
       async () => {
+        // 查询所有系统设置
         const { data, error } = await supabase
           .from('system_settings')
-          .select('*')
-          .eq('id', this.SETTINGS_ID)
-          .single()
+          .select('setting_key, setting_value')
 
         if (error) {
-          if (error.code === 'PGRST116') {
-            // 设置不存在，创建默认设置
-            return this.createDefaultSettings()
-          }
           throw new Error(error.message)
         }
 
-        const settings = this.mapDatabaseToSettings(data)
+        if (!data || data.length === 0) {
+          // 设置不存在，创建默认设置
+          return this.createDefaultSettings()
+        }
+
+        // 将数据库记录转换为 SystemSettings 对象
+        const settings = this.mapDatabaseRecordsToSettings(data)
         return { success: true, data: settings }
       },
       {
-        cache: true,
-        cacheTTL: 60000 // 1分钟缓存
+        cache: false, // 暂时禁用缓存
+        timeout: 10000, // 增加超时时间到10秒
+        retries: 1, // 减少重试次数
+        operation: 'getSystemSettings'
       }
     )
     
@@ -46,13 +49,40 @@ export class SettingsService {
   }
 
   // 获取系统设置（别名方法）
-  static async getSystemSettings(): Promise<SystemSettings | null> {
+  static async getSystemSettings(): Promise<SystemSettings> {
+    logger.info('[SettingsService] 开始直接查询系统设置...');
+    
     try {
-      const result = await this.getSettings()
-      return result.success ? result.data : null
+      // 减少超时时间到2秒，避免长时间等待
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('查询超时')), 2000);
+      });
+
+      const queryPromise = supabase
+        .from('system_settings')
+        .select('*');
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+
+      if (error) {
+        logger.error('[SettingsService] 查询系统设置失败:', error);
+        logger.info('[SettingsService] 返回默认设置');
+        return this.getDefaultSettings();
+      }
+
+      if (!data || data.length === 0) {
+        logger.info('[SettingsService] 未找到系统设置，返回默认设置');
+        return this.getDefaultSettings();
+      }
+
+      logger.info('[SettingsService] 成功获取系统设置，记录数:', data.length);
+      const settings = this.mapDatabaseRecordsToSettings(data);
+      logger.info('[SettingsService] 系统设置转换完成');
+      return settings;
+
     } catch (error) {
-      log.error('SettingsService.getSystemSettings error', error, 'SettingsService')
-      return null
+      logger.error('[SettingsService] SettingsService.getSystemSettings 异常，返回默认设置', error);
+      return this.getDefaultSettings();
     }
   }
 
@@ -60,51 +90,105 @@ export class SettingsService {
   static async updateSettings(updates: Partial<SystemSettings>): Promise<ServiceResponse<SystemSettings>> {
     const result = await APIUtils.apiCall(
       async () => {
-        const updateData: any = {}
+        // 构建更新数组
+        const updatePromises: any[] = []
         
         if (updates.packageGradeThresholds) {
-          updateData.package_grade_thresholds = updates.packageGradeThresholds
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'package_grade_thresholds', setting_value: updates.packageGradeThresholds, category: 'package' })
+              .select()
+          )
         }
         if (updates.breakEvenConfig) {
-          updateData.break_even_config = updates.breakEvenConfig
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'break_even_config', setting_value: updates.breakEvenConfig, category: 'package' })
+              .select()
+          )
         }
         if (updates.finalGradeConfig) {
-          updateData.final_grade_config = updates.finalGradeConfig
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'final_grade_config', setting_value: updates.finalGradeConfig, category: 'grade' })
+              .select()
+          )
         }
         if (updates.scoringAlgorithm) {
-          updateData.scoring_algorithm = updates.scoringAlgorithm
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'scoring_algorithm', setting_value: updates.scoringAlgorithm, category: 'algorithm' })
+              .select()
+          )
         }
         if (updates.countryOptions) {
-          updateData.country_options = updates.countryOptions
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'country_options', setting_value: updates.countryOptions, category: 'dropdown' })
+              .select()
+          )
         }
         if (updates.ratingOptions) {
-          updateData.rating_options = updates.ratingOptions
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'rating_options', setting_value: updates.ratingOptions, category: 'dropdown' })
+              .select()
+          )
         }
         if (updates.minRatingCount !== undefined) {
-          updateData.min_rating_count = updates.minRatingCount
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'min_rating_count', setting_value: updates.minRatingCount, category: 'algorithm' })
+              .select()
+          )
         }
         if (updates.timeDecayFactor !== undefined) {
-          updateData.time_decay_factor = updates.timeDecayFactor
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'time_decay_factor', setting_value: updates.timeDecayFactor, category: 'algorithm' })
+              .select()
+          )
         }
         if (updates.ratingScoreMap) {
-          updateData.rating_score_map = updates.ratingScoreMap
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'rating_score_map', setting_value: updates.ratingScoreMap, category: 'algorithm' })
+              .select()
+          )
         }
 
-        const { data, error } = await supabase
-          .from('system_settings')
-          .update(updateData)
-          .eq('id', this.SETTINGS_ID)
-          .select()
-          .single()
-
-        if (error) {
-          throw new Error(error.message)
+        // 执行所有更新
+        const results = await Promise.all(updatePromises)
+        
+        // 检查是否有错误
+        for (const result of results) {
+          if (result.error) {
+            throw new Error(result.error.message)
+          }
         }
 
         // 清除缓存
         APIUtils.cache.delete('settings:get')
 
-        const settings = this.mapDatabaseToSettings(data)
+        // 重新获取设置
+        const { data, error } = await supabase
+          .from('system_settings')
+          .select('setting_key, setting_value')
+
+        if (error) {
+          throw new Error(error.message)
+        }
+
+        const settings = this.mapDatabaseRecordsToSettings(data)
         return { success: true, data: settings }
       },
       {
@@ -126,7 +210,7 @@ export class SettingsService {
       const result = await this.updateSettings(updates)
       return result.success ? result.data : null
     } catch (error) {
-      log.error('SettingsService.updateSystemSettings error', error, 'SettingsService')
+      logger.error('SettingsService.updateSystemSettings error', error, 'SettingsService')
       return null
     }
   }
@@ -135,27 +219,15 @@ export class SettingsService {
   static async resetToDefault(): Promise<ServiceResponse<SystemSettings>> {
     const result = await APIUtils.apiCall(
       async () => {
-        const defaultSettings = this.getDefaultSettings()
-        const settingsData = this.mapSettingsToDatabase(defaultSettings)
-
-        const { data, error } = await supabase
+        // 先删除所有现有设置
+        await supabase
           .from('system_settings')
-          .upsert([{
-            id: this.SETTINGS_ID,
-            ...settingsData
-          }])
-          .select()
-          .single()
+          .delete()
+          .neq('setting_key', '')
 
-        if (error) {
-          throw new Error(error.message)
-        }
-
-        // 清除缓存
-        APIUtils.cache.delete('settings:get')
-
-        const settings = this.mapDatabaseToSettings(data)
-        return { success: true, data: settings }
+        // 创建默认设置
+        const defaultResult = await this.createDefaultSettings()
+        return defaultResult
       },
       {
         cache: false,
@@ -176,7 +248,7 @@ export class SettingsService {
       const result = await this.resetToDefault()
       return result.success ? result.data : null
     } catch (error) {
-      log.error('SettingsService.resetSystemSettings error', error, 'SettingsService')
+      logger.error('SettingsService.resetSystemSettings error', error, 'SettingsService')
       return null
     }
   }
@@ -213,7 +285,7 @@ export class SettingsService {
           return null
       }
     } catch (error) {
-      log.error('SettingsService.getCategorySettings error', error, 'SettingsService')
+      logger.error('SettingsService.getCategorySettings error', error, 'SettingsService')
       throw error
     }
   }
@@ -269,7 +341,7 @@ export class SettingsService {
       const result = await this.updateSettings(updates)
       return result.success
     } catch (error) {
-      log.error('SettingsService.updateCategorySettings error', error, 'SettingsService')
+      logger.error('SettingsService.updateCategorySettings error', error, 'SettingsService')
       return false
     }
   }
@@ -277,22 +349,30 @@ export class SettingsService {
   // 创建默认设置
   private static async createDefaultSettings(): Promise<{ success: boolean; data: SystemSettings }> {
     const defaultSettings = this.getDefaultSettings()
-    const settingsData = this.mapSettingsToDatabase(defaultSettings)
+    
+    // 将设置转换为键值对数组
+    const settingsArray = [
+      { setting_key: 'package_grade_thresholds', setting_value: defaultSettings.packageGradeThresholds, category: 'package' },
+      { setting_key: 'break_even_config', setting_value: defaultSettings.breakEvenConfig, category: 'package' },
+      { setting_key: 'final_grade_config', setting_value: defaultSettings.finalGradeConfig, category: 'grade' },
+      { setting_key: 'scoring_algorithm', setting_value: defaultSettings.scoringAlgorithm, category: 'algorithm' },
+      { setting_key: 'country_options', setting_value: defaultSettings.countryOptions, category: 'dropdown' },
+      { setting_key: 'rating_options', setting_value: defaultSettings.ratingOptions, category: 'dropdown' },
+      { setting_key: 'min_rating_count', setting_value: defaultSettings.minRatingCount, category: 'algorithm' },
+      { setting_key: 'time_decay_factor', setting_value: defaultSettings.timeDecayFactor, category: 'algorithm' },
+      { setting_key: 'rating_score_map', setting_value: defaultSettings.ratingScoreMap, category: 'algorithm' }
+    ]
 
     const { data, error } = await supabase
       .from('system_settings')
-      .insert([{
-        id: this.SETTINGS_ID,
-        ...settingsData
-      }])
-      .select()
-      .single()
+      .insert(settingsArray)
+      .select('setting_key, setting_value')
 
     if (error) {
       throw new Error(error.message)
     }
 
-    const settings = this.mapDatabaseToSettings(data)
+    const settings = this.mapDatabaseRecordsToSettings(data)
     return { success: true, data: settings }
   }
 
@@ -354,33 +434,51 @@ export class SettingsService {
     }
   }
 
-  // 映射数据库记录到设置对象
-  private static mapDatabaseToSettings(data: any): SystemSettings {
-    return {
-      packageGradeThresholds: data.package_grade_thresholds || this.getDefaultSettings().packageGradeThresholds,
-      breakEvenConfig: data.break_even_config || this.getDefaultSettings().breakEvenConfig,
-      finalGradeConfig: data.final_grade_config || this.getDefaultSettings().finalGradeConfig,
-      scoringAlgorithm: data.scoring_algorithm || this.getDefaultSettings().scoringAlgorithm,
-      countryOptions: data.country_options || this.getDefaultSettings().countryOptions,
-      ratingOptions: data.rating_options || this.getDefaultSettings().ratingOptions,
-      minRatingCount: data.min_rating_count ?? this.getDefaultSettings().minRatingCount,
-      timeDecayFactor: data.time_decay_factor ?? this.getDefaultSettings().timeDecayFactor,
-      ratingScoreMap: data.rating_score_map || this.getDefaultSettings().ratingScoreMap
-    }
+
+
+  // 映射多条数据库记录到设置对象
+  private static mapDatabaseRecordsToSettings(records: any[]): SystemSettings {
+    const defaultSettings = this.getDefaultSettings()
+    const settings: SystemSettings = { ...defaultSettings }
+
+    // 遍历所有记录，根据 setting_key 字段组合设置
+    records.forEach(record => {
+      const key = record.setting_key
+      const value = record.setting_value
+
+      switch (key) {
+        case 'package_grade_thresholds':
+          settings.packageGradeThresholds = value || defaultSettings.packageGradeThresholds
+          break
+        case 'break_even_config':
+          settings.breakEvenConfig = value || defaultSettings.breakEvenConfig
+          break
+        case 'final_grade_config':
+          settings.finalGradeConfig = value || defaultSettings.finalGradeConfig
+          break
+        case 'scoring_algorithm':
+          settings.scoringAlgorithm = value || defaultSettings.scoringAlgorithm
+          break
+        case 'country_options':
+          settings.countryOptions = value || defaultSettings.countryOptions
+          break
+        case 'rating_options':
+          settings.ratingOptions = value || defaultSettings.ratingOptions
+          break
+        case 'min_rating_count':
+          settings.minRatingCount = value ?? defaultSettings.minRatingCount
+          break
+        case 'time_decay_factor':
+          settings.timeDecayFactor = value ?? defaultSettings.timeDecayFactor
+          break
+        case 'rating_score_map':
+          settings.ratingScoreMap = value || defaultSettings.ratingScoreMap
+          break
+      }
+    })
+
+    return settings
   }
 
-  // 映射设置对象到数据库记录
-  private static mapSettingsToDatabase(settings: SystemSettings): any {
-    return {
-      package_grade_thresholds: settings.packageGradeThresholds,
-      break_even_config: settings.breakEvenConfig,
-      final_grade_config: settings.finalGradeConfig,
-      scoring_algorithm: settings.scoringAlgorithm,
-      country_options: settings.countryOptions,
-      rating_options: settings.ratingOptions,
-      min_rating_count: settings.minRatingCount,
-      time_decay_factor: settings.timeDecayFactor,
-      rating_score_map: settings.ratingScoreMap
-    }
-  }
+
 }

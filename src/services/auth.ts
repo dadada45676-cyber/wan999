@@ -176,44 +176,41 @@ export class AuthService {
   static async createUser(form: CreateUserForm): Promise<{ success: boolean; error?: string; user?: User }> {
     const response = await APIUtils.apiCall(
       async () => {
-        // 创建认证用户
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email: form.email,
-          password: form.password,
-          email_confirm: true,
-          user_metadata: {
-            name: form.name,
-            role: form.role
-          }
-        })
-
-        if (authError || !authData.user) {
-          throw new Error(this.getErrorMessage(authError))
+        // 获取当前用户的 session token
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          throw new Error('用户未登录')
         }
 
-        // 创建用户档案
-        const { data: profileData, error: profileError } = await supabase
-          .from('user_profiles')
-          .insert({
-            id: authData.user.id,
+        // 调用 Edge Function 创建用户
+        const { data, error } = await supabase.functions.invoke('create-user', {
+          body: {
             email: form.email,
+            password: form.password,
             name: form.name,
             role: form.role,
             department: form.department,
             phone: form.phone,
-            status: form.status,
-            created_by: (await this.getCurrentUser())?.id
-          })
-          .select()
-          .single()
+            status: form.status || 'active'
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        })
 
-        if (profileError) {
-          // 如果档案创建失败，删除认证用户
-          await supabase.auth.admin.deleteUser(authData.user.id)
+        if (error) {
+          throw new Error(error.message || '用户创建失败')
+        }
+
+        if (data?.error) {
+          throw new Error(data.error)
+        }
+
+        if (!data?.user) {
           throw new Error('用户创建失败，请重试')
         }
 
-        const user = this.mapProfileToUser(profileData)
+        const user = this.mapProfileToUser(data.user)
         return {
           success: true,
           user
@@ -455,6 +452,11 @@ export class AuthService {
   private static getErrorMessage(error: AuthError | null): string {
     if (!error) return '未知错误'
 
+    // 检查是否为网络连接错误
+    if (error.message === 'Failed to fetch' || error.message.includes('fetch')) {
+      return this.getNetworkErrorMessage()
+    }
+
     switch (error.message) {
       case 'Invalid login credentials':
         return '用户名或密码错误'
@@ -466,8 +468,142 @@ export class AuthService {
         return '用户不存在'
       case 'Password should be at least 6 characters':
         return '密码至少需要6个字符'
+      case 'NetworkError':
+      case 'TypeError: Failed to fetch':
+        return this.getNetworkErrorMessage()
       default:
+        // 检查是否包含网络相关关键词
+        if (error.message.toLowerCase().includes('network') || 
+            error.message.toLowerCase().includes('connection') ||
+            error.message.toLowerCase().includes('timeout')) {
+          return this.getNetworkErrorMessage()
+        }
         return error.message || '操作失败，请重试'
+    }
+  }
+
+  // 获取网络错误详细信息
+  private static getNetworkErrorMessage(): string {
+    const isProduction = import.meta.env.PROD
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    
+    let message = '网络连接失败，请检查以下项目：\n'
+    message += '• 检查网络连接是否正常\n'
+    message += '• 确认防火墙未阻止访问\n'
+    
+    if (isProduction) {
+      message += '• 验证服务器配置是否正确\n'
+      if (supabaseUrl) {
+        message += `• 检查 Supabase 服务状态 (${supabaseUrl})\n`
+      }
+    } else {
+      message += '• 检查开发环境配置\n'
+    }
+    
+    message += '• 如问题持续，请联系技术支持'
+    
+    return message
+  }
+
+  // 网络连接诊断
+  static async diagnoseNetworkConnection(): Promise<{
+    success: boolean
+    details: {
+      internetConnection: boolean
+      supabaseReachable: boolean
+      dnsResolution: boolean
+      corsIssue: boolean
+    }
+    message: string
+  }> {
+    const details = {
+      internetConnection: false,
+      supabaseReachable: false,
+      dnsResolution: false,
+      corsIssue: false
+    }
+
+    try {
+      // 1. 检查基本网络连接
+      try {
+        const response = await fetch('https://www.google.com/favicon.ico', { 
+          method: 'HEAD', 
+          mode: 'no-cors',
+          cache: 'no-cache'
+        })
+        details.internetConnection = true
+      } catch {
+        details.internetConnection = false
+      }
+
+      // 2. 检查 DNS 解析
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      if (supabaseUrl) {
+        try {
+          const url = new URL(supabaseUrl)
+          const response = await fetch(`${url.origin}/health`, { 
+            method: 'HEAD',
+            mode: 'no-cors',
+            cache: 'no-cache'
+          })
+          details.dnsResolution = true
+        } catch {
+          details.dnsResolution = false
+        }
+
+        // 3. 检查 Supabase 可达性
+        try {
+          const response = await fetch(`${supabaseUrl}/rest/v1/`, {
+            method: 'HEAD',
+            headers: {
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+            }
+          })
+          details.supabaseReachable = response.ok
+          details.corsIssue = false
+        } catch (error: any) {
+          details.supabaseReachable = false
+          // 检查是否为 CORS 错误
+          if (error.message && error.message.includes('CORS')) {
+            details.corsIssue = true
+          }
+        }
+      }
+
+      // 生成诊断消息
+      let message = '网络诊断结果：\n'
+      message += `• 互联网连接: ${details.internetConnection ? '✓ 正常' : '✗ 异常'}\n`
+      message += `• DNS 解析: ${details.dnsResolution ? '✓ 正常' : '✗ 异常'}\n`
+      message += `• Supabase 连接: ${details.supabaseReachable ? '✓ 正常' : '✗ 异常'}\n`
+      
+      if (details.corsIssue) {
+        message += '• CORS 配置: ✗ 存在问题\n'
+        message += '\n建议：检查 Supabase 项目的 CORS 设置'
+      }
+
+      const success = details.internetConnection && details.supabaseReachable
+      
+      if (!success) {
+        message += '\n\n故障排除建议：\n'
+        if (!details.internetConnection) {
+          message += '• 检查网络连接\n'
+        }
+        if (!details.dnsResolution) {
+          message += '• 检查 DNS 设置\n'
+        }
+        if (!details.supabaseReachable) {
+          message += '• 检查 Supabase 服务状态\n'
+          message += '• 验证 API 密钥配置\n'
+        }
+      }
+
+      return { success, details, message }
+    } catch (error) {
+      return {
+        success: false,
+        details,
+        message: `诊断过程出错: ${error instanceof Error ? error.message : '未知错误'}`
+      }
     }
   }
 }

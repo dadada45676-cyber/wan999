@@ -17,10 +17,8 @@ const ReportCenter = () => {
   const [selectedReportType, setSelectedReportType] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
 
-  // 初始化数据
   useEffect(() => {
-    // 使用store中的真实数据，无需额外加载
-    // 数据已通过API服务在应用初始化时加载
+    // 数据已在应用初始化时加载
   }, [reports.length, setReports])
 
   // 筛选数据

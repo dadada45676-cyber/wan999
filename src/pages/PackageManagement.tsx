@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Upload, Search, Filter, Download, Eye, Trash2, Package, FileText, AlertCircle, CheckCircle, Clock, Calendar, Globe, Smartphone, Building, Info, X, Plus, Star, Award, TrendingUp, TrendingDown, ChevronUp, ChevronDown } from 'lucide-react'
 import { useAppStore } from '../store'
 import { useCountry } from '../store/country'
+import { PhonePackage } from '../types'
 
 import { useToast } from '../hooks/useToast'
 import ToastContainer from '../components/ToastContainer'
@@ -11,6 +12,7 @@ import SortableTableHeader from '../components/SortableTableHeader'
 import Button from '../components/Button'
 import { tableStyles, tableRowHeights, tableTextStyles } from '../styles/tableStyles'
 import CountrySelector from '../components/CountrySelector'
+import { PackageService, FileUploadService } from '../services/package'
 
 const PackageManagement: React.FC = () => {
   const { 
@@ -81,9 +83,7 @@ const PackageManagement: React.FC = () => {
     const loadData = async () => {
       setIsLoading(true)
       
-      // 注意：模拟数据已移除，现在使用store中的真实数据
-      // 如果需要加载数据，应通过API调用获取
-      // TODO: 实现真实的数据加载逻辑
+      // 数据通过store管理，已在应用初始化时加载
       
       setIsLoading(false)
     }
@@ -98,7 +98,7 @@ const PackageManagement: React.FC = () => {
   }
 
   // 评级计算函数（基于万分转化数）
-  const calculateGrade = (conversionRate: number): string => {
+  const calculateGrade = (conversionRate: number): "A" | "B" | "C" | "D" | "S" | "SS" => {
     if (conversionRate >= 50) return 'SS'
     if (conversionRate >= 30) return 'S'
     if (conversionRate >= 20) return 'A'
@@ -287,82 +287,109 @@ const PackageManagement: React.FC = () => {
     setIsUploading(true)
     setUploadProgressState(0)
     setUploadStage('uploading')
-    setUploadMessage('正在上传文件...')
+    setUploadMessage('正在准备上传...')
 
     try {
-      // 阶段1: 文件上传 (0-30%)
+      // 阶段1: 创建套餐记录
       setUploadStage('uploading')
-      setUploadMessage('正在上传文件...')
-      for (let i = 0; i <= 30; i += 5) {
-        setUploadProgressState(i)
-        await new Promise(resolve => setTimeout(resolve, 150))
+      setUploadMessage('正在创建套餐记录...')
+      setUploadProgressState(10)
+
+      const createPackageForm = {
+        name: uploadForm.packageName,
+        description: uploadForm.description || `${uploadForm.smsProvider} - ${uploadForm.source}`,
+        fileName: uploadForm.file.name,
+        sendTime: uploadForm.sendTime,
+        totalPhoneCount: uploadForm.totalPhoneCount,
+        firstChargeCount: uploadForm.firstChargeCount,
+        conversionRate: calculateConversionRateValue(uploadForm.firstChargeCount, uploadForm.totalPhoneCount),
+        grade: calculateGrade(calculateConversionRateValue(uploadForm.firstChargeCount, uploadForm.totalPhoneCount)),
+        smsProvider: uploadForm.smsProvider,
+        source: uploadForm.source,
+        gamePlatform: uploadForm.gamePlatform,
+        countryCode: uploadForm.country
       }
 
-      // 阶段2: 文件处理 (30-70%)
-      setUploadStage('processing')
-      setUploadMessage('正在解析文件内容...')
+      const createResult = await PackageService.createPackage(createPackageForm)
       
+      if (!createResult.success || !createResult.package) {
+        throw new Error(createResult.error || '套餐创建失败')
+      }
+
+      const packageId = createResult.package.id
+      setUploadProgressState(20)
+
+      // 阶段2: 文件上传
+      setUploadStage('uploading')
+      setUploadMessage('正在上传文件...')
+
+      const uploadResult = await FileUploadService.uploadPackageFile(
+        uploadForm.file,
+        packageId,
+        (progress, stage) => {
+          // 将文件上传进度映射到 20-80% 范围
+          const mappedProgress = 20 + (progress * 0.6)
+          setUploadProgressState(mappedProgress)
+          setUploadMessage(stage)
+          
+          if (progress >= 90) {
+            setUploadStage('processing')
+          }
+        }
+      )
+
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || '文件上传失败')
+      }
+
+      // 阶段3: 文件处理和数据分析
+      setUploadStage('analyzing')
+      setUploadMessage('正在分析号码数据...')
+      setUploadProgressState(85)
+
       // 提取号码列表（基于PRD的数据契约要求）
       const phoneNumbers = await extractPhoneNumbers(uploadForm.file)
       
-      for (let i = 30; i <= 70; i += 8) {
-        setUploadProgressState(i)
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
+      setUploadProgressState(95)
 
-      // 阶段3: 数据分析 (70-90%)
-      setUploadStage('analyzing')
-      setUploadMessage('正在分析号码数据...')
-      for (let i = 70; i <= 90; i += 5) {
-        setUploadProgressState(i)
-        await new Promise(resolve => setTimeout(resolve, 180))
-      }
-
-      // 阶段4: 完成处理 (90-100%)
+      // 阶段4: 完成处理
       setUploadStage('completing')
       setUploadMessage('正在生成分析报告...')
-      for (let i = 90; i <= 100; i += 2) {
-        setUploadProgressState(i)
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
 
       // 计算万分转化数和评级
       const conversionRate = calculateConversionRateValue(uploadForm.firstChargeCount, uploadForm.totalPhoneCount)
       const grade = calculateGrade(conversionRate)
 
-      // 创建新包（包含phoneNumbers字段）
-      const newPackage = {
-        id: Date.now().toString(),
-        name: uploadForm.packageName,
+      // 创建新包（符合PhonePackage类型）
+      const newPackage: PhonePackage = {
+        ...createResult.package,
+        valid_phones: phoneNumbers.length,
+        invalid_phones: uploadForm.totalPhoneCount - phoneNumbers.length,
+        duplicate_phones: 0,
+        conversion_rate: conversionRate,
+        grade: grade as 'SS' | 'S' | 'A' | 'B' | 'C' | 'D',
+        status: 'completed' as const,
+        upload_progress: 100,
+        upload_time: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        // 兼容字段
         fileName: uploadForm.file.name,
         country: uploadForm.country,
         totalPhones: uploadForm.totalPhoneCount,
-        validPhones: phoneNumbers.length,
-        invalidPhones: uploadForm.totalPhoneCount - phoneNumbers.length,
-        duplicatePhones: 0,
-        conversionRate,
-        packageRating: grade as 'SS' | 'S' | 'A' | 'B' | 'C' | 'D',
-        sendTime: uploadForm.sendTime,
-        smsProvider: uploadForm.smsProvider,
-        source: uploadForm.source,
-        gamePlatform: uploadForm.gamePlatform,
-        visitCount: uploadForm.visitCount,
-        registerCount: uploadForm.registerCount,
-        firstChargeCount: uploadForm.firstChargeCount,
-        totalAmount: uploadForm.chargeAmount,
-        status: 'completed' as const,
-        uploadProgress: 100,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        grade: grade as 'SS' | 'S' | 'A' | 'B' | 'C' | 'D',
         phoneCount: uploadForm.totalPhoneCount,
-        description: uploadForm.description || `${uploadForm.smsProvider} - ${uploadForm.source}`,
-        fileSize: uploadForm.file.size,
+        firstChargeCount: uploadForm.firstChargeCount,
+        smsProvider: uploadForm.smsProvider,
+        gamePlatform: uploadForm.gamePlatform,
+        sendTime: uploadForm.sendTime,
+        uploadProgress: 100,
+        createdAt: createResult.package.created_at,
+        updatedAt: new Date().toISOString(),
         uploadTime: new Date().toISOString(),
-        phoneNumbers: phoneNumbers // 添加实际的号码列表
+        phoneNumbers: phoneNumbers
       }
 
       addPackage(newPackage)
+      setUploadProgressState(100)
       
       // 重置表单
       setUploadForm({
@@ -385,7 +412,8 @@ const PackageManagement: React.FC = () => {
       success('上传成功', `号码包已成功上传，包含 ${phoneNumbers.length} 个有效号码样本`)
       
     } catch (error) {
-      error('上传失败', '文件处理过程中出现错误，请检查文件格式后重试')
+      const errorMessage = error instanceof Error ? error.message : '文件处理过程中出现错误，请检查文件格式后重试'
+      error('上传失败', errorMessage)
     } finally {
       setIsUploading(false)
       setUploadProgressState(0)
@@ -1145,8 +1173,8 @@ const PackageManagement: React.FC = () => {
                             <span>万分转化数</span>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <span className="text-sm font-semibold text-gray-900">{Math.round(pkg.conversionRate || 0)}</span>
-                            {pkg.conversionRate >= 160 && (
+                            <span className="text-sm font-semibold text-gray-900">{Math.round(pkg.conversion_rate || 0)}</span>
+                            {pkg.conversion_rate >= 160 && (
                               <span className="text-xs text-amber-700 bg-gradient-to-r from-amber-100 to-yellow-100 px-2 py-1 rounded-full border border-amber-200 font-medium">
                                 保本线
                               </span>
@@ -1320,16 +1348,16 @@ const PackageManagement: React.FC = () => {
                   <td className={`${tableStyles.td} ${tableRowHeights.comfortable}`}>
                     <div className="flex items-center space-x-2">
                       <div className="flex items-center">
-                        {pkg.conversionRate >= 200 ? (
+                        {pkg.conversion_rate >= 200 ? (
                           <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-                        ) : pkg.conversionRate >= 160 ? (
+                        ) : pkg.conversion_rate >= 160 ? (
                           <TrendingUp className="w-4 h-4 text-yellow-500 mr-1" />
                         ) : (
                           <TrendingDown className="w-4 h-4 text-red-500 mr-1" />
                         )}
-                        <span className={tableTextStyles.primary}>{Math.round(pkg.conversionRate || 0)}</span>
+                        <span className={tableTextStyles.primary}>{Math.round(pkg.conversion_rate || 0)}</span>
                       </div>
-                      {pkg.conversionRate >= 160 && (
+                      {pkg.conversion_rate >= 160 && (
                         <span className="text-xs text-amber-700 bg-gradient-to-r from-amber-100 to-yellow-100 px-2 py-1 rounded-full border border-amber-200 font-medium">
                           保本线
                         </span>
@@ -1532,8 +1560,8 @@ const PackageManagement: React.FC = () => {
                           
                           <div>
                             <label className="text-sm font-medium text-gray-500">文件信息</label>
-                            <div className="text-base text-gray-900">{pkg.fileName}</div>
-                            <div className="text-sm text-gray-500">{formatFileSize(pkg.fileSize)}</div>
+                            <div className="text-base text-gray-900">{pkg.file_name}</div>
+                            <div className="text-sm text-gray-500">{pkg.phone_count.toLocaleString()} 个号码</div>
                           </div>
                           
                           <div>
@@ -1571,10 +1599,10 @@ const PackageManagement: React.FC = () => {
                           
                           <div>
                             <label className="text-sm font-medium text-gray-500">万分转化数</label>
-                            <div className={`text-2xl font-bold ${pkg.conversionRate >= 16 ? 'text-green-600' : 'text-red-600'}`}>
-                              {Math.round(pkg.conversionRate)}‱
+                            <div className={`text-2xl font-bold ${pkg.conversion_rate >= 16 ? 'text-green-600' : 'text-red-600'}`}>
+                              {Math.round(pkg.conversion_rate)}‱
                             </div>
-                            {pkg.conversionRate >= 16 && (
+                            {pkg.conversion_rate >= 16 && (
                               <div className="text-sm text-green-600 font-medium">保本线以上</div>
                             )}
                           </div>

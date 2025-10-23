@@ -81,7 +81,6 @@ class Logger {
     } else {
       // 生产环境：只处理错误级别的日志
       if (level === LogLevel.ERROR) {
-        // 这里可以集成错误监控服务，如 Sentry
         this.sendToMonitoring(entry)
       }
     }
@@ -89,8 +88,6 @@ class Logger {
 
   private sendToMonitoring(entry: LogEntry) {
     // 在生产环境中，可以将错误发送到监控服务
-    // 例如：Sentry.captureException(new Error(entry.message))
-    
     // 目前只在控制台输出错误
     console.error(`[${entry.timestamp.toISOString()}] ${entry.message}`, entry.data)
   }

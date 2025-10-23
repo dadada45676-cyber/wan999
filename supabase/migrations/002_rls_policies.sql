@@ -3,7 +3,7 @@
 
 -- 启用所有表的行级安全
 ALTER TABLE countries ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE phone_packages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE phones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE phone_ratings ENABLE ROW LEVEL SECURITY;
@@ -18,7 +18,7 @@ CREATE OR REPLACE FUNCTION get_current_user_role()
 RETURNS TEXT AS $$
 BEGIN
     RETURN COALESCE(
-        (SELECT role FROM users WHERE id = auth.uid()),
+        (SELECT role FROM user_profiles WHERE id = auth.uid()),
         'anonymous'
     );
 END;
@@ -29,12 +29,9 @@ CREATE OR REPLACE FUNCTION has_permission(required_permission TEXT)
 RETURNS BOOLEAN AS $$
 BEGIN
     RETURN EXISTS (
-        SELECT 1 FROM users 
+        SELECT 1 FROM user_profiles 
         WHERE id = auth.uid() 
-        AND (
-            role = 'admin' OR 
-            required_permission = ANY(permissions)
-        )
+        AND role = 'admin'
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -57,19 +54,19 @@ CREATE POLICY "countries_delete_policy" ON countries
     FOR DELETE TO authenticated
     USING (get_current_user_role() = 'admin');
 
--- 2. 用户表策略 - 管理员可管理所有用户，普通用户只能查看自己
-CREATE POLICY "users_select_policy" ON users
+-- 2. 用户配置表策略 - 管理员可管理所有用户，普通用户只能查看自己
+CREATE POLICY "user_profiles_select_policy" ON user_profiles
     FOR SELECT TO authenticated
     USING (
         get_current_user_role() = 'admin' OR 
         id = auth.uid()
     );
 
-CREATE POLICY "users_insert_policy" ON users
+CREATE POLICY "user_profiles_insert_policy" ON user_profiles
     FOR INSERT TO authenticated
     WITH CHECK (get_current_user_role() = 'admin');
 
-CREATE POLICY "users_update_policy" ON users
+CREATE POLICY "user_profiles_update_policy" ON user_profiles
     FOR UPDATE TO authenticated
     USING (
         get_current_user_role() = 'admin' OR 
@@ -80,7 +77,7 @@ CREATE POLICY "users_update_policy" ON users
         (id = auth.uid() AND get_current_user_role() IN ('admin', 'operator'))
     );
 
-CREATE POLICY "users_delete_policy" ON users
+CREATE POLICY "user_profiles_delete_policy" ON user_profiles
     FOR DELETE TO authenticated
     USING (get_current_user_role() = 'admin' AND id != auth.uid());
 
@@ -361,7 +358,7 @@ BEGIN
         result
     ) VALUES (
         auth.uid(),
-        COALESCE((SELECT email FROM users WHERE id = auth.uid()), 'system'),
+        COALESCE((SELECT email FROM user_profiles WHERE id = auth.uid()), 'system'),
         TG_OP,
         TG_TABLE_NAME,
         COALESCE(NEW.id::TEXT, OLD.id::TEXT),
@@ -377,8 +374,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 为重要表添加审计日志触发器
-CREATE TRIGGER audit_users_trigger
-    AFTER INSERT OR UPDATE OR DELETE ON users
+CREATE TRIGGER audit_user_profiles_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON user_profiles
     FOR EACH ROW EXECUTE FUNCTION log_audit_event();
 
 CREATE TRIGGER audit_phone_packages_trigger

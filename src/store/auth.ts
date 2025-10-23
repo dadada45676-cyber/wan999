@@ -102,7 +102,7 @@ interface AuthState {
   clearError: () => void
 }
 
-// 用户数据将从Supabase获取，不再使用mock数据
+// 用户数据从Supabase获取
 
 // 创建认证store
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -586,7 +586,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
 // 认证状态管理已完全迁移到Supabase
 
-// 选择器函数
+// 选择器函数 - 简化避免无限循环
 export const useAuth = () => useAuthStore(state => state)
 
 export const useAuthActions = () => useAuthStore(state => state)

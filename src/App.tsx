@@ -45,8 +45,6 @@ function App() {
       }
       
       log.info('开始系统初始化...', undefined, 'App')
-      
-      // 使用优化的 API 初始化流程
       const result = await APIService.initializeApp()
       
       if (result.success) {
@@ -207,6 +205,9 @@ function App() {
   return (
     <Router>
       <Routes>
+        {/* 根路径重定向 */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        
         {/* 公共路由 - 登录页面 */}
         <Route 
           path="/login" 
@@ -219,41 +220,88 @@ function App() {
 
         {/* 受保护的路由 - 需要认证 */}
         <Route 
-          path="/*" 
+          path="/dashboard" 
           element={
             <ProtectedRoute>
               <Layout>
-                <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/packages" element={<PackageManagement />} />
-                  <Route path="/analysis" element={<DataAnalysis />} />
-                  <Route path="/phones" element={<PhoneManagement />} />
-                  <Route path="/reports" element={<ReportCenter />} />
-                  <Route path="/settings" element={<SystemSettings />} />
-                  
-                  {/* 404 页面 */}
-                  <Route 
-                    path="*" 
-                    element={
-                      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                        <div className="text-center">
-                          <h1 className="text-6xl font-bold text-gray-300 mb-4">404</h1>
-                          <h2 className="text-2xl font-semibold text-gray-900 mb-2">页面未找到</h2>
-                          <p className="text-gray-600 mb-6">抱歉，您访问的页面不存在。</p>
-                          <button
-                            onClick={() => window.history.back()}
-                            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                          >
-                            返回上一页
-                          </button>
-                        </div>
-                      </div>
-                    } 
-                  />
-                </Routes>
+                <Dashboard />
               </Layout>
             </ProtectedRoute>
+          } 
+        />
+        
+        <Route 
+          path="/packages" 
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <PackageManagement />
+              </Layout>
+            </ProtectedRoute>
+          } 
+        />
+        
+        <Route 
+          path="/analysis" 
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <DataAnalysis />
+              </Layout>
+            </ProtectedRoute>
+          } 
+        />
+        
+        <Route 
+          path="/phones" 
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <PhoneManagement />
+              </Layout>
+            </ProtectedRoute>
+          } 
+        />
+        
+        <Route 
+          path="/reports" 
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ReportCenter />
+              </Layout>
+            </ProtectedRoute>
+          } 
+        />
+        
+        <Route 
+          path="/settings" 
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <SystemSettings />
+              </Layout>
+            </ProtectedRoute>
+          } 
+        />
+        
+        {/* 404 页面 */}
+        <Route 
+          path="*" 
+          element={
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+              <div className="text-center">
+                <h1 className="text-6xl font-bold text-gray-300 mb-4">404</h1>
+                <h2 className="text-2xl font-semibold text-gray-900 mb-2">页面未找到</h2>
+                <p className="text-gray-600 mb-6">抱歉，您访问的页面不存在。</p>
+                <button
+                  onClick={() => window.history.back()}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  返回上一页
+                </button>
+              </div>
+            </div>
           } 
         />
       </Routes>

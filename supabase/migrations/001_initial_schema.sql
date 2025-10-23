@@ -19,21 +19,23 @@ CREATE TABLE countries (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. 用户表（基于auth.ts接口）
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+-- 2. 用户配置表（基于auth.ts接口）
+CREATE TABLE user_profiles (
+  id UUID PRIMARY KEY, -- 关联 auth.users.id
   email VARCHAR(255) NOT NULL UNIQUE,
   name VARCHAR(100) NOT NULL,
   role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'operator')),
   status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'locked')),
-  permissions TEXT[] DEFAULT '{}', -- 权限数组
+  department VARCHAR(100),
+  phone VARCHAR(20),
   last_login TIMESTAMP WITH TIME ZONE,
   login_attempts INTEGER DEFAULT 0,
   locked_until TIMESTAMP WITH TIME ZONE,
   must_change_password BOOLEAN DEFAULT false,
+  login_count INTEGER DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_by UUID REFERENCES users(id)
+  created_by UUID REFERENCES user_profiles(id)
 );
 
 -- 3. 号码包表（基于store/index.ts的PhonePackage接口）
@@ -60,7 +62,7 @@ CREATE TABLE phone_packages (
   visit_count INTEGER DEFAULT 0,
   register_count INTEGER DEFAULT 0,
   total_amount DECIMAL(15,2) DEFAULT 0,
-  user_id UUID NOT NULL REFERENCES users(id),
+  user_id UUID NOT NULL REFERENCES user_profiles(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -126,7 +128,7 @@ CREATE TABLE reports (
   data JSONB, -- 存储报告数据
   download_url TEXT,
   country_code VARCHAR(3) NOT NULL REFERENCES countries(code),
-  user_id UUID NOT NULL REFERENCES users(id),
+  user_id UUID NOT NULL REFERENCES user_profiles(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -145,7 +147,7 @@ CREATE TABLE system_settings (
 -- 9. 审计日志表（基于AuditLog接口）
 CREATE TABLE audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES users(id),
+  user_id UUID REFERENCES user_profiles(id),
   user_email VARCHAR(255),
   action VARCHAR(100) NOT NULL,
   resource VARCHAR(100) NOT NULL,
@@ -161,7 +163,7 @@ CREATE TABLE audit_logs (
 -- 10. 用户会话表（基于SessionInfo接口）
 CREATE TABLE user_sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
   token_hash VARCHAR(255) NOT NULL UNIQUE,
   expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
   last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -214,7 +216,7 @@ $$ language 'plpgsql';
 
 -- 为所有表添加更新时间戳触发器
 CREATE TRIGGER update_countries_updated_at BEFORE UPDATE ON countries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_user_profiles_updated_at BEFORE UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_phone_packages_updated_at BEFORE UPDATE ON phone_packages FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_phones_updated_at BEFORE UPDATE ON phones FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_phone_ratings_updated_at BEFORE UPDATE ON phone_ratings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

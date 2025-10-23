@@ -117,15 +117,14 @@ INSERT INTO system_settings (setting_key, setting_value, description, category) 
 }', '角色权限映射', 'permissions');
 
 -- 3. 创建默认管理员账号（基于auth.ts的DEFAULT_ADMIN）
--- 注意：这里使用Supabase Auth，所以只插入用户信息，密码由Supabase Auth管理
-INSERT INTO users (id, email, name, role, status, permissions, must_change_password) VALUES
-(uuid_generate_v4(), 'admin@sms-system.com', '系统管理员', 'admin', 'active', 
- ARRAY['page.package', 'page.phone', 'page.user', 'page.settings', 'page.report', 'page.analysis'], 
- true);
+-- 注意：管理员账号需要通过 Supabase Auth API 创建，这里只是预留配置
+-- 实际创建需要在应用启动时通过 AuthService.createUser 完成
 
 -- 4. 插入示例数据（用于测试和演示）
--- 注意：这些是最小化的示例数据，符合mock_data_guidelines
+-- 注意：示例数据需要在管理员账号创建后再插入
+-- 这些数据将在应用初始化时通过代码创建
 
+/*
 -- 插入示例号码包（2个示例）
 DO $$
 DECLARE
@@ -134,7 +133,7 @@ DECLARE
     package_id_2 UUID := uuid_generate_v4();
 BEGIN
     -- 获取管理员用户ID
-    SELECT id INTO admin_user_id FROM users WHERE email = 'admin@sms-system.com' LIMIT 1;
+    SELECT id INTO admin_user_id FROM user_profiles WHERE email = 'admin@sms-system.com' LIMIT 1;
     
     -- 插入示例号码包
     INSERT INTO phone_packages (
@@ -187,6 +186,7 @@ BEGIN
      '2024-01-01 至 2024-01-31', '0MB', 
      '墨西哥地区一月数据分析报告', 'MX', admin_user_id);
 END $$;
+*/
 
 -- 5. 创建视图以简化常用查询
 -- 号码包统计视图
@@ -200,7 +200,7 @@ SELECT
     COUNT(CASE WHEN p.status = 'active' THEN 1 END) as active_phone_count
 FROM phone_packages pp
 LEFT JOIN countries c ON pp.country_code = c.code
-LEFT JOIN users u ON pp.user_id = u.id
+LEFT JOIN user_profiles u ON pp.user_id = u.id
 LEFT JOIN phones p ON pp.id = p.package_id
 GROUP BY pp.id, c.name, c.flag, u.name;
 
@@ -225,7 +225,7 @@ SELECT
     COUNT(DISTINCT r.id) as report_count,
     MAX(pp.created_at) as last_package_upload,
     MAX(r.created_at) as last_report_generated
-FROM users u
+FROM user_profiles u
 LEFT JOIN phone_packages pp ON u.id = pp.user_id
 LEFT JOIN reports r ON u.id = r.user_id
 GROUP BY u.id;

@@ -43,9 +43,6 @@ const Dashboard: React.FC = () => {
     return () => clearInterval(interval)
   }, [])
 
-  // 注意：模拟数据已移除，现在使用store中的真实数据
-  // 如果需要初始化数据，应通过API调用获取
-
   // 现代化配色方案
   const colors = {
     primary: '#6366f1',
@@ -69,7 +66,7 @@ const Dashboard: React.FC = () => {
     const overallConversionRate = totalPhones > 0 ? (totalFirstCharge / totalPhones) * 10000 : 0
     
     // 保本线分析（16万分转化数为保本线）
-    const aboveBreakEven = filteredPackages.filter(pkg => pkg.conversionRate >= 16).length
+    const aboveBreakEven = filteredPackages.filter(pkg => pkg.conversion_rate >= 16).length
     const breakEvenRate = filteredPackages.length > 0 ? (aboveBreakEven / filteredPackages.length) * 100 : 0
     
     return {
@@ -85,12 +82,12 @@ const Dashboard: React.FC = () => {
   // 等级分布统计（基于PRD的评级标准）
   const gradeDistribution = useMemo(() => {
     const distribution = {
-      SS: filteredPackages.filter(p => p.conversionRate >= 50).length,
-      S: filteredPackages.filter(p => p.conversionRate >= 30 && p.conversionRate < 50).length,
-      A: filteredPackages.filter(p => p.conversionRate >= 20 && p.conversionRate < 30).length,
-      B: filteredPackages.filter(p => p.conversionRate >= 16 && p.conversionRate < 20).length,
-      C: filteredPackages.filter(p => p.conversionRate >= 10 && p.conversionRate < 16).length,
-      D: filteredPackages.filter(p => p.conversionRate < 10).length,
+      SS: filteredPackages.filter(p => p.conversion_rate >= 50).length,
+      S: filteredPackages.filter(p => p.conversion_rate >= 30 && p.conversion_rate < 50).length,
+      A: filteredPackages.filter(p => p.conversion_rate >= 20 && p.conversion_rate < 30).length,
+      B: filteredPackages.filter(p => p.conversion_rate >= 16 && p.conversion_rate < 20).length,
+      C: filteredPackages.filter(p => p.conversion_rate >= 10 && p.conversion_rate < 16).length,
+      D: filteredPackages.filter(p => p.conversion_rate < 10).length,
     }
     
     return Object.entries(distribution).map(([grade, count]) => ({

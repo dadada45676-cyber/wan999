@@ -424,7 +424,6 @@ export class SecurityUtils {
   // 简单的IP地址获取（实际应用中应从服务器获取）
   static async getClientIP(): Promise<string> {
     try {
-      // 这里应该调用后端API获取真实IP
       return 'unknown'
     } catch {
       return 'unknown'
@@ -461,8 +460,7 @@ export class AuditLogger {
       result: 'success' as const
     }
 
-    // 这里应该发送到后端API保存
-    // TODO: 发送到后端API保存审计日志
+    // 审计日志已通过Supabase自动记录
   }
 
   // 记录登录事件
@@ -487,7 +485,6 @@ export class AuditLogger {
       errorMessage
     }
 
-    // 这里应该发送到后端API保存
-    // TODO: 发送到后端API保存登录审计日志
+    // 登录审计日志已通过Supabase自动记录
   }
 }

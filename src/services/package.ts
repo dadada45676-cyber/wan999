@@ -14,8 +14,8 @@ interface ServiceResponse<T = any> {
 export class PackageService {
   
   // 获取所有套餐
-  static async getAllPackages(country?: string): Promise<PhonePackage[]> {
-    const cacheKey = country ? `packages:all:${country}` : 'packages:all'
+  static async getAllPackages(countryCode?: string): Promise<PhonePackage[]> {
+    const cacheKey = countryCode ? `packages:all:${countryCode}` : 'packages:all'
     
     const response = await APIUtils.apiCall(
       async () => {
@@ -24,9 +24,9 @@ export class PackageService {
           .select('*')
           .order('created_at', { ascending: false })
 
-        // 如果指定了国家，添加过滤条件
-        if (country) {
-          query = query.eq('country', country)
+        // 如果指定了国家代码，添加过滤条件
+        if (countryCode) {
+          query = query.eq('country_code', countryCode)
         }
 
         const { data, error } = await query
@@ -56,9 +56,18 @@ export class PackageService {
           .insert({
             name: form.name,
             description: form.description,
-            price: form.price,
-            cost: form.cost,
-            status: 'active',
+            file_name: form.fileName,
+            send_time: form.sendTime,
+            phone_count: form.totalPhoneCount || 0,
+            first_charge_count: form.firstChargeCount || 0,
+            conversion_rate: form.conversionRate || 0,
+            grade: form.grade || 'D',
+            status: 'processing',
+            sms_provider: form.smsProvider,
+            source: form.source,
+            game_platform: form.gamePlatform,
+            country_code: form.countryCode,
+            user_id: '00000000-0000-0000-0000-000000000000', // 临时用户ID，后续需要从认证系统获取
             created_at: new Date().toISOString()
           })
           .select()
@@ -83,6 +92,7 @@ export class PackageService {
     if (response.success && response.data) {
       // 清除套餐列表缓存
       APIUtils.cache.delete('packages:all')
+      APIUtils.cache.delete(`packages:all:${form.countryCode}`)
       return response.data
     }
 
@@ -96,16 +106,29 @@ export class PackageService {
   static async updatePackage(id: string, form: EditPackageForm): Promise<{ success: boolean; error?: string; package?: PhonePackage }> {
     const response = await APIUtils.apiCall(
       async () => {
+        const updateData: any = {
+          updated_at: new Date().toISOString()
+        }
+
+        // 只更新提供的字段
+        if (form.name !== undefined) updateData.name = form.name
+        if (form.description !== undefined) updateData.description = form.description
+        if (form.status !== undefined) updateData.status = form.status
+        if (form.grade !== undefined) updateData.grade = form.grade
+        if (form.smsProvider !== undefined) updateData.sms_provider = form.smsProvider
+        if (form.source !== undefined) updateData.source = form.source
+        if (form.gamePlatform !== undefined) updateData.game_platform = form.gamePlatform
+        if (form.phoneCount !== undefined) updateData.phone_count = form.phoneCount
+        if (form.firstChargeCount !== undefined) updateData.first_charge_count = form.firstChargeCount
+        if (form.conversionRate !== undefined) updateData.conversion_rate = form.conversionRate
+        if (form.validPhones !== undefined) updateData.valid_phones = form.validPhones
+        if (form.invalidPhones !== undefined) updateData.invalid_phones = form.invalidPhones
+        if (form.duplicatePhones !== undefined) updateData.duplicate_phones = form.duplicatePhones
+        if (form.uploadProgress !== undefined) updateData.upload_progress = form.uploadProgress
+
         const { data, error } = await supabase
           .from('phone_packages')
-          .update({
-            name: form.name,
-            description: form.description,
-            price: form.price,
-            cost: form.cost,
-            status: form.status,
-            updated_at: new Date().toISOString()
-          })
+          .update(updateData)
           .eq('id', id)
           .select()
           .single()
@@ -130,6 +153,11 @@ export class PackageService {
       // 清除相关缓存
       APIUtils.cache.delete('packages:all')
       APIUtils.cache.delete(`packages:${id}`)
+      // 清除所有国家的缓存
+      const countryCode = response.data.package?.country_code
+      if (countryCode) {
+        APIUtils.cache.delete(`packages:all:${countryCode}`)
+      }
       return response.data
     }
 
@@ -287,8 +315,8 @@ export class PackageService {
     if (response.success && response.data) {
       // 清除相关缓存
       const ratingData = response.data.rating
-      if (ratingData?.packageId) {
-        APIUtils.cache.delete(`packages:ratings:${ratingData.packageId}`)
+      if (ratingData?.package_id) {
+        APIUtils.cache.delete(`packages:ratings:${ratingData.package_id}`)
       }
       return response.data
     }
@@ -363,7 +391,7 @@ export class PackageService {
           return data
         },
         { 
-          operation: `phone-scores:upsert:${score.phoneNumber}`,
+          operation: `phone-scores:upsert:${score.phone_number}`,
           cache: false, 
           retries: 1 
         }
@@ -371,7 +399,7 @@ export class PackageService {
 
       if (response.success) {
         // 清除相关缓存
-        APIUtils.cache.delete(`phone-scores:${score.phoneNumber}`)
+        APIUtils.cache.delete(`phone-scores:${score.phone_number}`)
         return response.data || null
       }
 
@@ -445,10 +473,10 @@ export class PackageService {
 
       if (response.success) {
         // 清除相关缓存
-        APIUtils.cache.delete(`phone-ratings:${rating.phoneNumber}`)
-        if (rating.packageId) {
-          APIUtils.cache.delete(`phone-ratings:${rating.phoneNumber}:${rating.packageId}`)
-          APIUtils.cache.delete(`packages:ratings:${rating.packageId}`)
+        APIUtils.cache.delete(`phone-ratings:${rating.phone_number}`)
+        if (rating.package_id) {
+          APIUtils.cache.delete(`phone-ratings:${rating.phone_number}:${rating.package_id}`)
+          APIUtils.cache.delete(`packages:ratings:${rating.package_id}`)
         }
         return response.data || null
       }
@@ -461,9 +489,9 @@ export class PackageService {
   }
 
   // 获取手机评分记录
-  static async getPhoneScores(country?: string, grade?: string): Promise<PhoneScore[]> {
+  static async getPhoneScores(countryCode?: string, grade?: string): Promise<PhoneScore[]> {
     try {
-      const cacheKey = `phone-scores:${country || 'all'}:${grade || 'all'}`
+      const cacheKey = `phone-scores:${countryCode || 'all'}:${grade || 'all'}`
 
       const response = await APIUtils.apiCall(
         async () => {
@@ -471,8 +499,8 @@ export class PackageService {
             .from('phone_scores')
             .select('*')
 
-          if (country) {
-            query = query.eq('country', country)
+          if (countryCode) {
+            query = query.eq('country_code', countryCode)
           }
 
           if (grade) {
@@ -639,24 +667,66 @@ export class PackageService {
 // 文件上传服务
 export class FileUploadService {
   // 上传号码包文件
-  static async uploadPackageFile(file: File, packageId: string): Promise<ServiceResponse<string>> {
+  static async uploadPackageFile(
+    file: File, 
+    packageId: string, 
+    onProgress?: (progress: number, stage: string) => void
+  ): Promise<ServiceResponse<string>> {
     try {
       const fileName = `packages/${packageId}/${file.name}`
       
-      const { data, error } = await supabase.storage
-        .from('phone-packages')
-        .upload(fileName, file)
+      if (onProgress) {
+        // 阶段1: 开始上传
+        onProgress(0, '准备上传文件...')
+        
+        // 模拟真实的上传进度
+        let currentProgress = 0
+        const progressInterval = setInterval(() => {
+          if (currentProgress < 80) {
+            currentProgress += Math.random() * 10
+            onProgress(Math.min(currentProgress, 80), '正在上传文件...')
+          }
+        }, 200)
+        
+        const { data, error } = await supabase.storage
+          .from('phone-packages')
+          .upload(fileName, file)
 
-      if (error) {
-        return { success: false, error: error.message }
+        clearInterval(progressInterval)
+        
+        if (error) {
+          return { success: false, error: error.message }
+        }
+
+        // 阶段2: 上传完成，处理文件
+        onProgress(90, '文件上传完成，正在处理...')
+        
+        // 获取公共URL
+        const { data: urlData } = supabase.storage
+          .from('phone-packages')
+          .getPublicUrl(fileName)
+
+        // 阶段3: 完成
+        onProgress(100, '文件处理完成')
+        
+        return { success: true, data: urlData.publicUrl }
+      } else {
+        // 没有进度回调的简单上传
+        const { data, error } = await supabase.storage
+          .from('phone-packages')
+          .upload(fileName, file)
+
+        if (error) {
+          return { success: false, error: error.message }
+        }
+
+        // 获取公共URL
+        const { data: urlData } = supabase.storage
+          .from('phone-packages')
+          .getPublicUrl(fileName)
+
+        return { success: true, data: urlData.publicUrl }
       }
-
-      // 获取公共URL
-      const { data: urlData } = supabase.storage
-        .from('phone-packages')
-        .getPublicUrl(fileName)
-
-      return { success: true, data: urlData.publicUrl }
     } catch (error) {
       return { 
         success: false, 

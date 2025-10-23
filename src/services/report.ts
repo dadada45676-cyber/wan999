@@ -260,22 +260,311 @@ export class ReportService {
   // 异步处理报告生成
   private static async processReportGeneration(reportId: string): Promise<void> {
     try {
-      // 模拟报告生成过程
-      setTimeout(async () => {
-        try {
-          // 这里应该是实际的报告生成逻辑
-          // 目前使用模拟数据
-          const mockFileUrl = `https://example.com/reports/${reportId}.pdf`
-          const mockFileSize = Math.floor(Math.random() * 5000000) + 1000000 // 1-5MB
+      // 获取报告配置信息
+      const { data: reportData, error: reportError } = await supabase
+        .from('reports')
+        .select('*')
+        .eq('id', reportId)
+        .single()
 
-          await this.updateReportStatus(reportId, 'completed', mockFileUrl, mockFileSize)
-        } catch (error) {
-          log.error('报告生成失败', error, 'ReportService')
-          await this.updateReportStatus(reportId, 'failed')
-        }
-      }, Math.random() * 10000 + 5000) // 5-15秒随机延迟
+      if (reportError || !reportData) {
+        throw new Error('无法获取报告配置信息')
+      }
+
+      // 真实的报告生成过程
+      const reportContent = await this.generateReportContent(reportData)
+      
+      // 生成报告文件
+      const fileBuffer = await this.generateReportFile(reportContent, reportData.format)
+      
+      // 上传文件到 Supabase Storage
+      const fileName = `${reportData.name}_${reportId}.${reportData.format}`
+      const filePath = `reports/${new Date().getFullYear()}/${new Date().getMonth() + 1}/${fileName}`
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('reports')
+        .upload(filePath, fileBuffer, {
+          contentType: this.getContentType(reportData.format),
+          upsert: false
+        })
+
+      if (uploadError) {
+        throw new Error(`文件上传失败: ${uploadError.message}`)
+      }
+
+      // 获取公共访问URL
+      const { data: urlData } = supabase.storage
+        .from('reports')
+        .getPublicUrl(filePath)
+
+      const fileSize = fileBuffer.byteLength
+
+      // 更新报告状态为完成
+      await this.updateReportStatus(reportId, 'completed', urlData.publicUrl, fileSize)
+      
+      log.info(`报告生成成功: ${reportId}`, { fileName, fileSize }, 'ReportService')
+      
     } catch (error) {
-      log.error('ReportService.processReportGeneration error', error, 'ReportService')
+      log.error('报告生成失败', error, 'ReportService')
+      await this.updateReportStatus(reportId, 'failed')
+    }
+  }
+
+  // 生成报告内容
+  private static async generateReportContent(reportConfig: any): Promise<any> {
+    try {
+      const { data_range_start, data_range_end, country, package_ids, type } = reportConfig
+      
+      // 查询套餐数据
+      let packagesQuery = supabase
+        .from('phone_packages')
+        .select('*')
+        .gte('created_at', data_range_start)
+        .lte('created_at', data_range_end)
+
+      if (country) {
+        packagesQuery = packagesQuery.eq('country_code', country)
+      }
+
+      if (package_ids && package_ids.length > 0) {
+        packagesQuery = packagesQuery.in('id', package_ids)
+      }
+
+      const { data: packages, error: packagesError } = await packagesQuery
+
+      if (packagesError) {
+        throw new Error(`查询套餐数据失败: ${packagesError.message}`)
+      }
+
+      // 查询评分数据
+      let ratingsQuery = supabase
+        .from('phone_ratings')
+        .select('*')
+        .gte('created_at', data_range_start)
+        .lte('created_at', data_range_end)
+
+      if (package_ids && package_ids.length > 0) {
+        ratingsQuery = ratingsQuery.in('package_id', package_ids)
+      }
+
+      const { data: ratings, error: ratingsError } = await ratingsQuery
+
+      if (ratingsError) {
+        throw new Error(`查询评分数据失败: ${ratingsError.message}`)
+      }
+
+      // 查询号码评分数据
+      let scoresQuery = supabase
+        .from('phone_scores')
+        .select('*')
+        .gte('updated_at', data_range_start)
+        .lte('updated_at', data_range_end)
+
+      if (country) {
+        scoresQuery = scoresQuery.eq('country_code', country)
+      }
+
+      const { data: scores, error: scoresError } = await scoresQuery
+
+      if (scoresError) {
+        throw new Error(`查询号码评分失败: ${scoresError.message}`)
+      }
+
+      // 数据聚合和分析
+      const reportContent = {
+        metadata: {
+          reportId: reportConfig.id,
+          name: reportConfig.name,
+          type: reportConfig.type,
+          generatedAt: new Date().toISOString(),
+          dataRange: {
+            startDate: data_range_start,
+            endDate: data_range_end
+          },
+          country: country || 'all'
+        },
+        summary: {
+          totalPackages: packages?.length || 0,
+          totalRatings: ratings?.length || 0,
+          totalPhones: scores?.length || 0,
+          averageScore: scores?.length ? scores.reduce((sum, s) => sum + (s.final_score || 0), 0) / scores.length : 0
+        },
+        packages: packages || [],
+        ratings: ratings || [],
+        scores: scores || [],
+        analytics: this.generateAnalytics(packages || [], ratings || [], scores || [])
+      }
+
+      return reportContent
+    } catch (error) {
+      log.error('生成报告内容失败', error, 'ReportService')
+      throw error
+    }
+  }
+
+  // 生成分析数据
+  private static generateAnalytics(packages: any[], ratings: any[], scores: any[]): any {
+    // 等级分布
+    const gradeDistribution = scores.reduce((acc, score) => {
+      const grade = score.final_grade || 'Unknown'
+      acc[grade] = (acc[grade] || 0) + 1
+      return acc
+    }, {})
+
+    // 套餐转化率分析
+    const packageAnalysis = packages.map(pkg => {
+      const packageRatings = ratings.filter(r => r.package_id === pkg.id)
+      const packageScores = scores.filter(s => s.package_id === pkg.id)
+      
+      return {
+        packageId: pkg.id,
+        packageName: pkg.name,
+        totalRatings: packageRatings.length,
+        averageRating: packageRatings.length ? 
+          packageRatings.reduce((sum, r) => sum + (r.score || 0), 0) / packageRatings.length : 0,
+        conversionRate: pkg.conversion_rate || 0,
+        phoneCount: packageScores.length
+      }
+    })
+
+    // 时间趋势分析
+    const timeAnalysis = this.generateTimeAnalysis(ratings, scores)
+
+    return {
+      gradeDistribution,
+      packageAnalysis,
+      timeAnalysis,
+      topPerformingPackages: packageAnalysis
+        .sort((a, b) => b.averageRating - a.averageRating)
+        .slice(0, 10),
+      lowPerformingPackages: packageAnalysis
+        .sort((a, b) => a.averageRating - b.averageRating)
+        .slice(0, 5)
+    }
+  }
+
+  // 生成时间趋势分析
+  private static generateTimeAnalysis(ratings: any[], scores: any[]): any {
+    const dailyStats = {}
+    
+    // 按日期聚合评分数据
+    ratings.forEach(rating => {
+      const date = rating.created_at.split('T')[0]
+      if (!dailyStats[date]) {
+        dailyStats[date] = { ratings: 0, totalScore: 0 }
+      }
+      dailyStats[date].ratings++
+      dailyStats[date].totalScore += rating.score || 0
+    })
+
+    // 计算每日平均分
+    const dailyAverages = Object.entries(dailyStats).map(([date, stats]: [string, any]) => ({
+      date,
+      averageScore: stats.ratings > 0 ? stats.totalScore / stats.ratings : 0,
+      ratingCount: stats.ratings
+    }))
+
+    return {
+      dailyAverages: dailyAverages.sort((a, b) => a.date.localeCompare(b.date))
+    }
+  }
+
+  // 生成报告文件
+  private static async generateReportFile(content: any, format: string): Promise<ArrayBuffer> {
+    switch (format) {
+      case 'pdf':
+        return this.generatePDFReport(content)
+      case 'excel':
+        return this.generateExcelReport(content)
+      case 'csv':
+        return this.generateCSVReport(content)
+      default:
+        throw new Error(`不支持的报告格式: ${format}`)
+    }
+  }
+
+  // 生成PDF报告
+  private static async generatePDFReport(content: any): Promise<ArrayBuffer> {
+    // 简化的PDF生成 - 实际项目中应使用专业的PDF库如jsPDF或PDFKit
+    const pdfContent = `
+报告名称: ${content.metadata.name}
+生成时间: ${new Date(content.metadata.generatedAt).toLocaleString('zh-CN')}
+数据范围: ${content.metadata.dataRange.startDate} 至 ${content.metadata.dataRange.endDate}
+
+=== 数据摘要 ===
+套餐总数: ${content.summary.totalPackages}
+评分总数: ${content.summary.totalRatings}
+号码总数: ${content.summary.totalPhones}
+平均评分: ${content.summary.averageScore.toFixed(2)}
+
+=== 等级分布 ===
+${Object.entries(content.analytics.gradeDistribution)
+  .map(([grade, count]) => `${grade}级: ${count}个`)
+  .join('\n')}
+
+=== 套餐分析 ===
+${content.analytics.packageAnalysis
+  .map(pkg => `${pkg.packageName}: 评分${pkg.totalRatings}次, 平均分${pkg.averageRating.toFixed(2)}`)
+  .join('\n')}
+`
+    
+    // 将文本转换为ArrayBuffer
+    const encoder = new TextEncoder()
+    return encoder.encode(pdfContent).buffer
+  }
+
+  // 生成Excel报告
+  private static async generateExcelReport(content: any): Promise<ArrayBuffer> {
+    // 简化的Excel生成 - 实际项目中应使用专业的Excel库如ExcelJS
+    const csvContent = this.generateCSVContent(content)
+    const encoder = new TextEncoder()
+    return encoder.encode(csvContent).buffer
+  }
+
+  // 生成CSV报告
+  private static async generateCSVReport(content: any): Promise<ArrayBuffer> {
+    const csvContent = this.generateCSVContent(content)
+    const encoder = new TextEncoder()
+    return encoder.encode(csvContent).buffer
+  }
+
+  // 生成CSV内容
+  private static generateCSVContent(content: any): string {
+    let csv = '报告摘要\n'
+    csv += `报告名称,${content.metadata.name}\n`
+    csv += `生成时间,${new Date(content.metadata.generatedAt).toLocaleString('zh-CN')}\n`
+    csv += `数据范围,${content.metadata.dataRange.startDate} 至 ${content.metadata.dataRange.endDate}\n`
+    csv += `套餐总数,${content.summary.totalPackages}\n`
+    csv += `评分总数,${content.summary.totalRatings}\n`
+    csv += `号码总数,${content.summary.totalPhones}\n`
+    csv += `平均评分,${content.summary.averageScore.toFixed(2)}\n\n`
+
+    csv += '套餐分析\n'
+    csv += '套餐名称,评分次数,平均评分,转化率,号码数量\n'
+    content.analytics.packageAnalysis.forEach(pkg => {
+      csv += `${pkg.packageName},${pkg.totalRatings},${pkg.averageRating.toFixed(2)},${pkg.conversionRate},${pkg.phoneCount}\n`
+    })
+
+    csv += '\n等级分布\n'
+    csv += '等级,数量\n'
+    Object.entries(content.analytics.gradeDistribution).forEach(([grade, count]) => {
+      csv += `${grade},${count}\n`
+    })
+
+    return csv
+  }
+
+  // 获取文件MIME类型
+  private static getContentType(format: string): string {
+    switch (format) {
+      case 'pdf':
+        return 'application/pdf'
+      case 'excel':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      case 'csv':
+        return 'text/csv'
+      default:
+        return 'application/octet-stream'
     }
   }
 

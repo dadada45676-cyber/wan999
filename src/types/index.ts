@@ -49,86 +49,128 @@ export interface SystemSettings {
 export interface PhonePackage {
   id: string
   name: string
-  fileName: string
-  country: string
-  totalPhones: number
-  validPhones: number
-  invalidPhones: number
-  duplicatePhones: number
-  conversionRate: number
-  packageRating: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'
-  sendTime: string
-  smsProvider: string
+  file_name: string
+  country_code: string
+  phone_count: number
+  valid_phones: number
+  invalid_phones: number
+  duplicate_phones: number
+  conversion_rate: number
+  grade: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'
+  send_time: string
+  sms_provider: string
   source: string
-  gamePlatform: string
-  visitCount: number
-  registerCount: number
-  firstChargeCount: number
-  totalAmount: number
+  game_platform: string
+  first_charge_count: number
   status: 'uploading' | 'processing' | 'completed' | 'failed'
-  uploadProgress: number
-  createdAt: string
-  updatedAt: string
-  // 添加缺失的属性
-  grade?: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'
-  phoneCount?: number
+  upload_progress: number
+  upload_time: string
+  created_at: string
+  updated_at: string
+  user_id: string
   description?: string
-  fileSize?: number
+  // 兼容旧字段名（用于前端显示）
+  fileName?: string
+  country?: string
+  totalPhones?: number
+  validPhones?: number
+  invalidPhones?: number
+  duplicatePhones?: number
+  conversionRate?: number
+  packageRating?: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'
+  phoneCount?: number
+  firstChargeCount?: number
+  smsProvider?: string
+  gamePlatform?: string
+  sendTime?: string
+  uploadProgress?: number
+  createdAt?: string
+  updatedAt?: string
   uploadTime?: string
   phoneNumbers?: string[]
 }
 
 export interface CreatePackageForm {
   name: string
-  country: string
+  fileName: string
+  countryCode: string
   smsProvider: string
   source: string
   gamePlatform: string
   sendTime: string
+  totalPhoneCount: number
+  firstChargeCount: number
+  conversionRate: number
+  grade: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'
   description?: string
-  price?: number
-  cost?: number
+  phoneNumbers?: string[]
 }
 
 export interface EditPackageForm {
-  name: string
-  smsProvider: string
-  source: string
-  gamePlatform: string
-  sendTime: string
+  name?: string
   description?: string
-  price?: number
-  cost?: number
   status?: 'uploading' | 'processing' | 'completed' | 'failed'
+  grade?: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'
+  smsProvider?: string
+  source?: string
+  gamePlatform?: string
+  phoneCount?: number
+  firstChargeCount?: number
+  conversionRate?: number
+  validPhones?: number
+  invalidPhones?: number
+  duplicatePhones?: number
+  uploadProgress?: number
 }
 
 export interface PhoneRating {
   id: string
-  phoneNumber: string
-  packageId: string
-  country: string
+  phone_number: string
+  package_id: string
+  country_code: string
   rating: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'
-  ratingScore: number
-  packageSize: number
-  conversionRate: number
-  createdAt: string
-  updatedAt: string
+  rating_score: number
+  package_size: number
+  conversion_rate: number
+  created_at: string
+  updated_at: string
+  // 兼容旧字段名
+  phoneNumber?: string
+  packageId?: string
+  country?: string
+  ratingScore?: number
+  packageSize?: number
+  conversionRate?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface PhoneScore {
   id: string
-  phoneNumber: string
-  country: string
-  ratingCount: number
-  averageScore: number
-  weightedScore: number
-  timeDecayScore: number
-  finalGrade: 'A' | 'B' | 'C' | 'D' | 'E'
+  phone_number: string
+  country_code: string
+  rating_count: number
+  average_score: number
+  weighted_score: number
+  time_decay_score: number
+  final_grade: 'A' | 'B' | 'C' | 'D' | 'E'
   status: 'pending' | 'processing' | 'active'
-  algorithmType: 'simple' | 'weighted' | 'timeDecay'
-  lastCalculated: string
-  createdAt: string
-  updatedAt: string
+  algorithm_type: 'simple' | 'weighted' | 'timeDecay'
+  last_calculated: string
+  created_at: string
+  updated_at: string
+  // 兼容旧字段名
+  phoneNumber?: string
+  country?: string
+  ratingCount?: number
+  averageScore?: number
+  weightedScore?: number
+  timeDecayScore?: number
+  finalGrade?: 'A' | 'B' | 'C' | 'D' | 'E'
+  algorithmType?: 'simple' | 'weighted' | 'timeDecay'
+  lastCalculated?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 // 报告相关类型
