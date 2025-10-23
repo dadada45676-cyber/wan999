@@ -1,0 +1,362 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* 现代化配色方案 - 基于2024年设计趋势 */
+  --color-primary: #6366f1;
+  --color-primary-dark: #4f46e5;
+  --color-primary-light: #a5b4fc;
+  --color-secondary: #8b5cf6;
+  --color-accent: #06b6d4;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+  
+  /* 背景色 - 现代化层次 */
+  --color-bg-primary: #fafbfc;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f8fafc;
+  --color-bg-sidebar: #f1f5f9;
+  --color-bg-hover: #f8fafc;
+  --color-bg-active: #f1f5f9;
+  
+  /* 文字色 - 高对比度 */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #64748b;
+  --color-text-quaternary: #94a3b8;
+  
+  /* 边框色 - 细腻层次 */
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+  --color-border-dark: #cbd5e1;
+  
+  /* 现代化阴影系统 */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  
+  /* 现代化圆角系统 */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+  
+  /* 间距系统 - 8px基础 */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+  
+  /* 现代化字体系统 - 高清渲染优化 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", "Helvetica Neue", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  line-height: 1.6;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  font-variant-ligatures: common-ligatures;
+  font-optical-sizing: auto;
+}
+
+/* 全局样式重置 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* 全局字体渲染优化 */
+*, *::before, *::after {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 标题字体优化 */
+h1, h2, h3, h4, h5, h6 {
+  font-feature-settings: "kern" 1, "liga" 1;
+  font-variant-ligatures: common-ligatures;
+  letter-spacing: -0.01em;
+}
+
+/* 小字体优化 */
+.text-xs, .text-sm {
+  letter-spacing: 0.02em;
+}
+
+/* 大字体优化 */
+.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl {
+  letter-spacing: -0.02em;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  overflow-x: hidden;
+  /* 额外的字体渲染优化 */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern" 1;
+  letter-spacing: 0.01em;
+}
+
+/* 现代化滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-dark);
+  border-radius: var(--radius-md);
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-quaternary);
+}
+
+/* 现代化按钮样式 */
+.btn-primary {
+  @apply bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md;
+}
+
+.btn-secondary {
+  @apply bg-white hover:bg-gray-50 text-gray-700 font-medium px-4 py-2 rounded-lg border border-gray-300 transition-all duration-200 shadow-sm hover:shadow-md;
+}
+
+.btn-ghost {
+  @apply bg-transparent hover:bg-gray-100 text-gray-600 hover:text-gray-900 font-medium px-4 py-2 rounded-lg transition-all duration-200;
+}
+
+/* 现代化卡片样式 */
+.card {
+  @apply bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200;
+}
+
+.card-header {
+  @apply p-6 border-b border-gray-100;
+}
+
+.card-body {
+  @apply p-6;
+}
+
+.card-footer {
+  @apply p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl;
+}
+
+/* 现代化表单样式 */
+.form-input {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white;
+}
+
+.form-select {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white;
+}
+
+.form-textarea {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white resize-none;
+}
+
+/* 现代化状态样式 */
+.status-success {
+  @apply bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-medium;
+}
+
+.status-warning {
+  @apply bg-yellow-50 text-yellow-700 border border-yellow-200 px-3 py-1 rounded-full text-xs font-medium;
+}
+
+.status-error {
+  @apply bg-red-50 text-red-700 border border-red-200 px-3 py-1 rounded-full text-xs font-medium;
+}
+
+.status-info {
+  @apply bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-medium;
+}
+
+/* 现代化表格样式 */
+.table-modern {
+  @apply w-full border-collapse;
+}
+
+.table-modern th {
+  @apply bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3 border-b border-gray-200;
+}
+
+.table-modern td {
+  @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900 border-b border-gray-100;
+}
+
+.table-modern tr:hover {
+  @apply bg-gray-50;
+}
+
+/* 现代化导航样式 */
+.nav-item {
+  @apply flex items-center px-4 py-3 text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all duration-200 font-medium;
+}
+
+.nav-item.active {
+  @apply text-indigo-600 bg-indigo-50 border-r-2 border-indigo-600;
+}
+
+/* 现代化指标卡片 */
+.metric-card {
+  @apply bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all duration-300;
+}
+
+.metric-value {
+  @apply text-3xl font-bold text-gray-900 mt-2;
+}
+
+.metric-label {
+  @apply text-sm font-medium text-gray-600;
+}
+
+.metric-change {
+  @apply text-xs text-gray-500 mt-1;
+}
+
+/* 现代化图标容器 */
+.icon-container {
+  @apply w-12 h-12 rounded-lg flex items-center justify-center;
+}
+
+.icon-container.primary {
+  @apply bg-indigo-100 text-indigo-600;
+}
+
+.icon-container.success {
+  @apply bg-green-100 text-green-600;
+}
+
+.icon-container.warning {
+  @apply bg-yellow-100 text-yellow-600;
+}
+
+.icon-container.error {
+  @apply bg-red-100 text-red-600;
+}
+
+.icon-container.info {
+  @apply bg-blue-100 text-blue-600;
+}
+
+/* 现代化加载动画 */
+.loading-spinner {
+  @apply animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600;
+}
+
+/* 现代化渐变背景 */
+.gradient-bg {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.gradient-bg-light {
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+/* 现代化焦点样式 */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2;
+}
+
+/* 现代化分隔线 */
+.divider {
+  @apply border-t border-gray-200 my-6;
+}
+
+/* 现代化标签 */
+.tag {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.tag.primary {
+  @apply bg-indigo-100 text-indigo-800;
+}
+
+.tag.success {
+  @apply bg-green-100 text-green-800;
+}
+
+.tag.warning {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.tag.error {
+  @apply bg-red-100 text-red-800;
+}
+
+/* 现代化动画 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .metric-card {
+    @apply p-4;
+  }
+  
+  .card-body {
+    @apply p-4;
+  }
+  
+  .card-header {
+    @apply p-4;
+  }
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-primary: #0f172a;
+    --color-bg-secondary: #1e293b;
+    --color-bg-tertiary: #334155;
+    --color-text-primary: #f8fafc;
+    --color-text-secondary: #cbd5e1;
+    --color-border: #334155;
+  }
+}

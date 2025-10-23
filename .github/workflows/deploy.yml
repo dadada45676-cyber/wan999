@@ -1,0 +1,144 @@
+# SMS营销数据分析系统 - 自动化部署工作流
+name: Deploy to Vercel
+
+on:
+  # 推送到主分支时触发生产部署
+  push:
+    branches: [main, master]
+  
+  # 推送到其他分支时触发预览部署
+  pull_request:
+    branches: [main, master]
+  
+  # 手动触发部署
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '部署环境'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+
+# 环境变量
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  # 代码质量检查
+  quality-check:
+    name: 代码质量检查
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      
+      - name: 安装依赖
+        run: npm ci
+      
+      - name: 类型检查
+        run: npm run type-check
+      
+      - name: 代码检查
+        run: npm run lint
+      
+      - name: 构建测试
+        run: npm run build
+
+  # 预览部署
+  deploy-preview:
+    name: 预览部署
+    runs-on: ubuntu-latest
+    needs: quality-check
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preview')
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 安装 Vercel CLI
+        run: npm install --global vercel@latest
+      
+      - name: 拉取 Vercel 环境信息
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+      
+      - name: 构建项目
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+      
+      - name: 部署到预览环境
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          echo "preview-url=$url" >> $GITHUB_OUTPUT
+      
+      - name: 评论预览链接
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 预览部署完成！\n\n📱 预览链接: ${{ steps.deploy.outputs.preview-url }}\n\n✅ 可以开始测试功能了！`
+            })
+
+  # 生产部署
+  deploy-production:
+    name: 生产部署
+    runs-on: ubuntu-latest
+    needs: quality-check
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.production-url }}
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 安装 Vercel CLI
+        run: npm install --global vercel@latest
+      
+      - name: 拉取 Vercel 环境信息
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      
+      - name: 构建项目
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      
+      - name: 部署到生产环境
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "production-url=$url" >> $GITHUB_OUTPUT
+      
+      - name: 通知部署成功
+        run: |
+          echo "🎉 生产环境部署成功！"
+          echo "🌐 生产链接: ${{ steps.deploy.outputs.production-url }}"
+
+  # 部署状态通知
+  notify-status:
+    name: 部署状态通知
+    runs-on: ubuntu-latest
+    needs: [deploy-preview, deploy-production]
+    if: always()
+    
+    steps:
+      - name: 部署状态汇总
+        run: |
+          echo "📊 部署状态汇总:"
+          echo "- 代码质量检查: ${{ needs.quality-check.result }}"
+          echo "- 预览部署: ${{ needs.deploy-preview.result }}"
+          echo "- 生产部署: ${{ needs.deploy-production.result }}"
