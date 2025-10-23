@@ -90,6 +90,25 @@ export class SettingsService {
   static async updateSettings(updates: Partial<SystemSettings>): Promise<ServiceResponse<SystemSettings>> {
     const result = await APIUtils.apiCall(
       async () => {
+        // 验证用户权限
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          throw new Error('用户未登录')
+        }
+
+        // 检查用户是否为管理员
+        const { data: userProfile, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+
+        if (profileError || !userProfile || userProfile.role !== 'admin') {
+          throw new Error('权限不足：只有管理员可以修改系统设置')
+        }
+
+        logger.info('[SettingsService] 开始更新系统设置，用户权限验证通过', { userId: user.id, role: userProfile.role })
+
         // 构建更新数组
         const updatePromises: any[] = []
         
@@ -138,6 +157,30 @@ export class SettingsService {
             supabase
               .from('system_settings')
               .upsert({ setting_key: 'rating_options', setting_value: updates.ratingOptions, category: 'dropdown' })
+              .select()
+          )
+        }
+        if (updates.smsProviders) {
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'sms_providers', setting_value: updates.smsProviders, category: 'dropdown' })
+              .select()
+          )
+        }
+        if (updates.sources) {
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'sources', setting_value: updates.sources, category: 'dropdown' })
+              .select()
+          )
+        }
+        if (updates.gamePlatforms) {
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert({ setting_key: 'game_platforms', setting_value: updates.gamePlatforms, category: 'dropdown' })
               .select()
           )
         }
@@ -279,7 +322,10 @@ export class SettingsService {
         case 'dropdown':
           return {
             countryOptions: settings.countryOptions,
-            ratingOptions: settings.ratingOptions
+            ratingOptions: settings.ratingOptions,
+            smsProviders: settings.smsProviders,
+            sources: settings.sources,
+            gamePlatforms: settings.gamePlatforms
           }
         default:
           return null
@@ -333,6 +379,15 @@ export class SettingsService {
           if (categorySettings.ratingOptions) {
             updates.ratingOptions = categorySettings.ratingOptions
           }
+          if (categorySettings.smsProviders) {
+            updates.smsProviders = categorySettings.smsProviders
+          }
+          if (categorySettings.sources) {
+            updates.sources = categorySettings.sources
+          }
+          if (categorySettings.gamePlatforms) {
+            updates.gamePlatforms = categorySettings.gamePlatforms
+          }
           break
         default:
           return false
@@ -358,6 +413,9 @@ export class SettingsService {
       { setting_key: 'scoring_algorithm', setting_value: defaultSettings.scoringAlgorithm, category: 'algorithm' },
       { setting_key: 'country_options', setting_value: defaultSettings.countryOptions, category: 'dropdown' },
       { setting_key: 'rating_options', setting_value: defaultSettings.ratingOptions, category: 'dropdown' },
+      { setting_key: 'sms_providers', setting_value: defaultSettings.smsProviders, category: 'dropdown' },
+      { setting_key: 'sources', setting_value: defaultSettings.sources, category: 'dropdown' },
+      { setting_key: 'game_platforms', setting_value: defaultSettings.gamePlatforms, category: 'dropdown' },
       { setting_key: 'min_rating_count', setting_value: defaultSettings.minRatingCount, category: 'algorithm' },
       { setting_key: 'time_decay_factor', setting_value: defaultSettings.timeDecayFactor, category: 'algorithm' },
       { setting_key: 'rating_score_map', setting_value: defaultSettings.ratingScoreMap, category: 'algorithm' }
@@ -422,6 +480,9 @@ export class SettingsService {
         { value: '4', label: '4星 - 较好' },
         { value: '5', label: '5星 - 很好' }
       ],
+      smsProviders: ['移动', '联通', '电信', '虚拟运营商'],
+      sources: ['来源1', '来源2', '来源3', '来源4'],
+      gamePlatforms: ['平台A', '平台B', '平台C', '平台D'],
       minRatingCount: 5,
       timeDecayFactor: 0.95,
       ratingScoreMap: {
@@ -464,6 +525,15 @@ export class SettingsService {
           break
         case 'rating_options':
           settings.ratingOptions = value || defaultSettings.ratingOptions
+          break
+        case 'sms_providers':
+          settings.smsProviders = value || defaultSettings.smsProviders
+          break
+        case 'sources':
+          settings.sources = value || defaultSettings.sources
+          break
+        case 'game_platforms':
+          settings.gamePlatforms = value || defaultSettings.gamePlatforms
           break
         case 'min_rating_count':
           settings.minRatingCount = value ?? defaultSettings.minRatingCount

@@ -38,6 +38,9 @@ export interface SystemSettings {
   }
   countryOptions: Array<{ value: string; label: string }>
   ratingOptions: Array<{ value: string; label: string }>
+  smsProviders?: string[]
+  sources?: string[]
+  gamePlatforms?: string[]
   minRatingCount: number
   timeDecayFactor: number
   ratingScoreMap: {
