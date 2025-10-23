@@ -36,8 +36,8 @@ export interface SystemSettings {
       timeDecay: number
     }
   }
-  countryOptions: Array<{ value: string; label: string }>
-  ratingOptions: Array<{ value: string; label: string }>
+  countryOptions: string[]
+  ratingOptions: string[]
   smsProviders?: string[]
   sources?: string[]
   gamePlatforms?: string[]

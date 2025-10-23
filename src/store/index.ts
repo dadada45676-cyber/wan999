@@ -157,21 +157,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         timeDecay: 0.1
       }
     },
-    countryOptions: [
-      { value: 'CN', label: '中国' },
-      { value: 'US', label: '美国' },
-      { value: 'UK', label: '英国' },
-      { value: 'JP', label: '日本' },
-      { value: 'KR', label: '韩国' }
-    ],
-    ratingOptions: [
-      { value: 'SS', label: 'SS级 - 优秀' },
-      { value: 'S', label: 'S级 - 良好' },
-      { value: 'A', label: 'A级 - 一般' },
-      { value: 'B', label: 'B级 - 较差' },
-      { value: 'C', label: 'C级 - 很差' },
-      { value: 'D', label: 'D级 - 极差' }
-    ],
+    countryOptions: ['中国', '美国', '英国', '日本', '韩国'],
+    ratingOptions: ['1星', '2星', '3星', '4星', '5星'],
+    smsProviders: ['移动', '联通', '电信', '虚拟运营商'],
+    sources: ['来源1', '来源2', '来源3', '来源4'],
+    gamePlatforms: ['平台A', '平台B', '平台C', '平台D'],
     minRatingCount: 3,
     timeDecayFactor: 0.01,
     ratingScoreMap: {

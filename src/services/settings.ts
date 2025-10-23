@@ -523,20 +523,8 @@ export class SettingsService {
           timeDecay: 0.1
         }
       },
-      countryOptions: [
-        { value: 'CN', label: '中国' },
-        { value: 'US', label: '美国' },
-        { value: 'UK', label: '英国' },
-        { value: 'JP', label: '日本' },
-        { value: 'KR', label: '韩国' }
-      ],
-      ratingOptions: [
-        { value: '1', label: '1星 - 很差' },
-        { value: '2', label: '2星 - 较差' },
-        { value: '3', label: '3星 - 一般' },
-        { value: '4', label: '4星 - 较好' },
-        { value: '5', label: '5星 - 很好' }
-      ],
+      countryOptions: ['中国', '美国', '英国', '日本', '韩国'],
+      ratingOptions: ['1星', '2星', '3星', '4星', '5星'],
       smsProviders: ['移动', '联通', '电信', '虚拟运营商'],
       sources: ['来源1', '来源2', '来源3', '来源4'],
       gamePlatforms: ['平台A', '平台B', '平台C', '平台D'],
