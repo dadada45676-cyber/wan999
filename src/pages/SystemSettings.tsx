@@ -189,7 +189,13 @@ const SystemSettings: React.FC = () => {
               ...prev,
               minRatingCount: settings.minRatingCount ?? prev.minRatingCount,
               timeDecayFactor: settings.timeDecayFactor ?? prev.timeDecayFactor,
-              ratingScoreMap: settings.ratingScoreMap || prev.ratingScoreMap
+              ratingScoreMap: settings.ratingScoreMap ? {
+                '1': settings.ratingScoreMap['1'] || prev.ratingScoreMap['1'],
+                '2': settings.ratingScoreMap['2'] || prev.ratingScoreMap['2'],
+                '3': settings.ratingScoreMap['3'] || prev.ratingScoreMap['3'],
+                '4': settings.ratingScoreMap['4'] || prev.ratingScoreMap['4'],
+                '5': settings.ratingScoreMap['5'] || prev.ratingScoreMap['5']
+              } : prev.ratingScoreMap
             }));
           }
           
