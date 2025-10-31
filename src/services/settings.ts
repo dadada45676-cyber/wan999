@@ -35,26 +35,35 @@ export class SettingsService {
           // 组合所有配置
           const settings: SystemSettings = {
             packageGradeThresholds: this.convertPackageGradeThresholds(configs.package_grade_thresholds),
-            finalGradeConfig: configs.final_grade_config,
+            finalGradeConfig: configs.final_grade_config as Array<{
+              name: 'A' | 'B' | 'C' | 'D' | 'E'
+              minScore: number
+              maxScore: number
+              color: string
+            }>,
             ratingScoreMap: this.convertRatingScoreMap(configs.rating_score_mapping),
-            antiFalsePositiveConfig: configs.anti_false_positive_config,
+            antiFalsePositiveConfig: {
+              threshold: configs.anti_false_positive_config.threshold,
+              enabled: configs.anti_false_positive_config.enabled,
+              description: '防误杀配置'
+            },
             scoringAlgorithm: this.convertScoringAlgorithm(configs.scoring_algorithm_config),
             ...additionalSettings,
             // 提供默认的其他设置
-            breakEvenConfig: additionalSettings.breakEvenConfig || {
+            breakEvenConfig: (additionalSettings as any).breakEvenConfig || {
               threshold: 16,
               warningLine: 12,
               dangerLine: 8,
               unit: '万分转化数',
               description: '基于万分转化数的保本线配置'
             },
-            countryOptions: additionalSettings.countryOptions || ['中国', '美国', '英国', '日本', '韩国'],
-            ratingOptions: additionalSettings.ratingOptions || ['1星', '2星', '3星', '4星', '5星'],
-            smsProviders: additionalSettings.smsProviders || ['移动', '联通', '电信', '虚拟运营商'],
-            sources: additionalSettings.sources || ['来源1', '来源2', '来源3', '来源4'],
-            gamePlatforms: additionalSettings.gamePlatforms || ['平台A', '平台B', '平台C', '平台D'],
-            minRatingCount: additionalSettings.minRatingCount ?? 5,
-            timeDecayFactor: additionalSettings.timeDecayFactor ?? 0.95
+            countryOptions: (additionalSettings as any).countryOptions || ['中国', '美国', '英国', '日本', '韩国'],
+            ratingOptions: (additionalSettings as any).ratingOptions || ['1星', '2星', '3星', '4星', '5星'],
+            smsProviders: (additionalSettings as any).smsProviders || ['移动', '联通', '电信', '虚拟运营商'],
+            sources: (additionalSettings as any).sources || ['来源1', '来源2', '来源3', '来源4'],
+            gamePlatforms: (additionalSettings as any).gamePlatforms || ['平台A', '平台B', '平台C', '平台D'],
+            minRatingCount: (additionalSettings as any).minRatingCount ?? 5,
+            timeDecayFactor: (additionalSettings as any).timeDecayFactor ?? 0.95
           }
 
           return { success: true, data: settings }
@@ -714,7 +723,7 @@ export class SettingsService {
   }
 
   // 获取评级分数映射配置 - 使用configService
-  static async getRatingScoreMapping(): Promise<ServiceResponse<Record<string, number>>> {
+  static async getRatingScoreMapping(): Promise<ServiceResponse<{ [key: string]: number }>> {
     const result = await APIUtils.apiCall(
       async () => {
         try {
@@ -736,13 +745,13 @@ export class SettingsService {
     
     return {
       success: result.success,
-      data: result.data?.data,
+      data: result.data?.data as unknown as { [key: string]: number },
       error: result.error?.message
     }
   }
 
   // 更新评级分数映射配置 - 使用configService
-  static async updateRatingScoreMapping(scoreMap: Record<string, number>): Promise<ServiceResponse<Record<string, number>>> {
+  static async updateRatingScoreMapping(scoreMap: { [key: string]: number }): Promise<ServiceResponse<{ [key: string]: number }>> {
     const result = await APIUtils.apiCall(
       async () => {
         // 验证用户权限
@@ -791,19 +800,19 @@ export class SettingsService {
     
     return {
       success: result.success,
-      data: result.data?.data,
+      data: result.success ? scoreMap : undefined,
       error: result.error?.message
     }
   }
 
   // 重置评级分数映射为默认值
-  static async resetRatingScoreMappingToDefault(): Promise<ServiceResponse<Record<string, number>>> {
+  static async resetRatingScoreMappingToDefault(): Promise<ServiceResponse<{ [key: string]: number }>> {
     const defaultMap = { 'SS': 100, 'S': 85, 'A': 70, 'B': 55, 'C': 40, 'D': 25 };
     return await this.updateRatingScoreMapping(defaultMap);
   }
 
   // 验证评级分数映射配置
-  static validateRatingScoreMapping(scoreMap: Record<string, number>): { isValid: boolean; errors: Record<string, string> } {
+  static validateRatingScoreMapping(scoreMap: { [key: string]: number }): { isValid: boolean; errors: Record<string, string> } {
     const errors: Record<string, string> = {};
     const ratings = RATING_GRADES;
     const scores = ratings.map(r => scoreMap[r]);
