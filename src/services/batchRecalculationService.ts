@@ -165,7 +165,6 @@ export class BatchRecalculationService extends SimpleEventEmitter {
     
     // 异步执行重算
     this.executeRecalculation(task).catch(error => {
-      console.error(`❌ 重算任务 ${taskId} 执行失败:`, error)
       this.updateTaskStatus(taskId, 'failed', error.message)
     })
     
@@ -485,7 +484,7 @@ export class BatchRecalculationService extends SimpleEventEmitter {
       // 这里可以实现任务取消逻辑
       this.updateTaskStatus(taskId, 'failed', '任务已取消')
       this.activeTasks.delete(taskId)
-      console.log(`🛑 任务 ${taskId} 已取消`)
+      // 任务已取消
       return true
     }
     return false
@@ -502,7 +501,7 @@ export class BatchRecalculationService extends SimpleEventEmitter {
       this.activeTasks.delete(taskId)
     })
     
-    console.log(`🧹 已清理 ${completedTasks.length} 个已完成的任务`)
+    // 已清理已完成的任务
   }
 
   /**
@@ -510,7 +509,7 @@ export class BatchRecalculationService extends SimpleEventEmitter {
    */
   updateOptions(newOptions: Partial<RecalculationOptions>): void {
     this.options = { ...this.options, ...newOptions }
-    console.log('✅ 重算选项已更新:', this.options)
+    // 重算选项已更新
   }
 }
 

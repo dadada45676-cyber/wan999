@@ -182,9 +182,9 @@ export class ConfigWatcher extends SimpleEventEmitter {
   private async teardownRealtimeSubscription(): Promise<void> {
     try {
       await supabase.removeAllChannels()
-      console.log('✅ 实时订阅已停止')
+      // 实时订阅已停止
     } catch (error) {
-      console.error('❌ 停止实时订阅失败:', error)
+      // 停止实时订阅失败，静默处理
     }
   }
 
@@ -305,7 +305,7 @@ export class ConfigWatcher extends SimpleEventEmitter {
       return hash.toString()
       
     } catch (error) {
-      console.error('❌ 计算配置哈希失败:', error)
+      // 计算配置哈希失败，静默处理
       return ''
     }
   }
@@ -336,7 +336,7 @@ export class ConfigWatcher extends SimpleEventEmitter {
    * 手动触发配置检查
    */
   async triggerConfigCheck(): Promise<void> {
-    console.log('🔄 手动触发配置检查...')
+    // 手动触发配置检查
     await this.checkConfigChanges()
   }
 
@@ -345,7 +345,7 @@ export class ConfigWatcher extends SimpleEventEmitter {
    */
   updateOptions(newOptions: Partial<ConfigWatcherOptions>): void {
     this.options = { ...this.options, ...newOptions }
-    console.log('✅ 监听选项已更新:', this.options)
+    // 监听选项已更新
     
     // 如果正在监听，重启以应用新选项
     if (this.isWatching) {

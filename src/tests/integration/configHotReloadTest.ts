@@ -285,7 +285,7 @@ class ConfigHotReloadIntegrationTest {
       // 监听错误事件
       const errorHandler = (error: any) => {
         errorHandled = true
-        console.log('✅ 错误被正确处理:', error.message)
+        // 错误被正确处理
       }
       
       this.hotReloadManager.on('config:change_error', errorHandler)

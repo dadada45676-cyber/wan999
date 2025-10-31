@@ -340,14 +340,11 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
     const activeTasks = this.recalculationService.getActiveTasks()
     const runningTasks = activeTasks.filter(task => task.status === 'running')
     
-    console.log(`🛑 取消 ${runningTasks.length} 个运行中的重算任务...`)
-    
     const cancelPromises = runningTasks.map(task => 
       this.recalculationService.cancelTask(task.id)
     )
     
     await Promise.all(cancelPromises)
-    console.log('✅ 所有重算任务已取消')
   }
 
   /**
@@ -365,7 +362,7 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
       this.recalculationService.updateOptions(newOptions.recalculation)
     }
     
-    console.log('✅ 热更新管理器选项已更新:', this.options)
+    // 热更新管理器选项已更新
   }
 
   /**
@@ -377,7 +374,7 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
       totalRecalculations: 0,
       lastConfigChange: undefined
     }
-    console.log('✅ 统计信息已重置')
+    // 统计信息已重置
   }
 
   /**

@@ -259,7 +259,7 @@ const SystemSettings: React.FC = () => {
         const hotStatus = await getHotReloadStatus();
         setHotReloadStatus(hotStatus);
       } catch (error) {
-        console.error('初始化配置状态失败:', error);
+        // 初始化配置状态失败，静默处理
       }
     };
 
