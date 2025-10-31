@@ -23,7 +23,7 @@ class SimpleEventEmitter {
         try {
           listener(...args)
         } catch (error) {
-          console.error(`Error in event listener for ${event}:`, error)
+          // 静默处理事件监听器错误
         }
       })
     }
@@ -117,7 +117,6 @@ export class ConfigWatcher extends SimpleEventEmitter {
       this.emit('watcher:started')
       
     } catch (error) {
-      console.error('❌ 启动配置监听器失败:', error)
       throw error
     }
   }
@@ -159,22 +158,19 @@ export class ConfigWatcher extends SimpleEventEmitter {
             table: 'system_settings'
           },
           (payload) => {
-            console.log('📡 检测到配置变更:', payload)
             this.handleConfigChange(payload)
           }
         )
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            console.log('✅ 实时配置监听已启用')
+            // 实时配置监听已启用
           } else if (status === 'CHANNEL_ERROR') {
-            console.error('❌ 实时配置监听连接失败')
             // 降级到轮询模式
             this.startPolling()
           }
         })
         
     } catch (error) {
-      console.error('❌ 设置实时订阅失败:', error)
       // 降级到轮询模式
       this.startPolling()
     }
@@ -204,11 +200,9 @@ export class ConfigWatcher extends SimpleEventEmitter {
       try {
         await this.checkConfigChanges()
       } catch (error) {
-        console.error('❌ 轮询检查配置变更失败:', error)
+        // 静默处理轮询检查错误
       }
     }, this.options.pollInterval)
-
-    console.log(`🔄 配置轮询监听已启动 (间隔: ${this.options.pollInterval}ms)`)
   }
 
   /**
@@ -219,14 +213,13 @@ export class ConfigWatcher extends SimpleEventEmitter {
       const currentHash = await this.calculateConfigHash()
       
       if (currentHash !== this.lastConfigHash && this.lastConfigHash !== '') {
-        console.log('🔄 检测到配置变更 (轮询)')
         await this.handleConfigChangeDetected()
       }
       
       this.lastConfigHash = currentHash
       
     } catch (error) {
-      console.error('❌ 检查配置变更失败:', error)
+      // 静默处理检查配置变更错误
     }
   }
 
@@ -235,15 +228,13 @@ export class ConfigWatcher extends SimpleEventEmitter {
    */
   private async handleConfigChange(payload: any): Promise<void> {
     try {
-      console.log('🔄 处理配置变更事件:', payload.eventType)
-      
       // 延迟一点时间确保数据库事务完成
       setTimeout(async () => {
         await this.handleConfigChangeDetected()
       }, 1000)
       
     } catch (error) {
-      console.error('❌ 处理配置变更事件失败:', error)
+      // 静默处理配置变更事件错误
     }
   }
 
@@ -252,24 +243,18 @@ export class ConfigWatcher extends SimpleEventEmitter {
    */
   private async handleConfigChangeDetected(): Promise<void> {
     try {
-      console.log('🔄 开始处理配置变更...')
-      
       // 清除配置缓存
       await this.configService.clearCache()
-      console.log('✅ 配置缓存已清除')
       
       // 重新加载配置
       await this.configService.reloadConfigs()
-      console.log('✅ 配置已重新加载')
       
       // 验证新配置
       const validation = await this.configService.validateAllConfigs()
       if (!validation.overall.isValid) {
-        console.error('❌ 新配置验证失败:', validation.overall.errors)
         this.emit('config:validation_failed', validation)
         return
       }
-      console.log('✅ 新配置验证通过')
       
       // 触发配置变更事件
       const changeEvent: ConfigChangeEvent = {
@@ -280,19 +265,16 @@ export class ConfigWatcher extends SimpleEventEmitter {
       }
       
       this.emit('config:changed', changeEvent)
-      console.log('✅ 配置变更事件已发送')
       
       // 触发批量重算（如果启用）
       if (this.options.enableBatchRecalculation) {
         this.emit('config:recalculation_needed', changeEvent)
-        console.log('✅ 批量重算请求已发送')
       }
       
       // 更新配置哈希
       await this.updateConfigHash()
       
     } catch (error) {
-      console.error('❌ 处理配置变更失败:', error)
       this.emit('config:change_error', error)
     }
   }

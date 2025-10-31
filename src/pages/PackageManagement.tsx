@@ -109,7 +109,6 @@ const PackageManagement: React.FC = () => {
       if (grade === 'E') return 'D'
       return grade as "A" | "B" | "C" | "D" | "S" | "SS"
     } catch (error) {
-      console.error('获取评级配置失败，使用默认逻辑:', error)
       // 降级到默认逻辑
       if (conversionRate >= 50) return 'SS'
       if (conversionRate >= 30) return 'S'
@@ -383,10 +382,9 @@ const PackageManagement: React.FC = () => {
         const assignResult = await PackageService.assignPackageGradeToPhones(packageId, phoneNumbers)
         
         if (!assignResult.success) {
-          console.warn('号码包评级分配失败:', assignResult.error)
           // 不阻断流程，只记录警告
         } else {
-          console.log(`成功为 ${assignResult.assignedCount} 个号码分配了包评级`)
+          // 成功分配包评级
         }
       }
 

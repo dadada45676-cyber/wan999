@@ -595,7 +595,7 @@ const SystemSettings: React.FC = () => {
       const status = await getHotReloadStatus();
       setHotReloadStatus(status);
     } catch (error) {
-      console.error('获取热更新状态失败:', error);
+      // 静默处理热更新状态获取失败
     }
   };
 

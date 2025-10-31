@@ -24,7 +24,7 @@ class SimpleEventEmitter {
         try {
           listener(...args)
         } catch (error) {
-          console.error(`Error in event listener for ${event}:`, error)
+          // 静默处理事件监听器错误
         }
       })
     }
@@ -135,7 +135,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
       this.emit('manager:started')
       
     } catch (error) {
-      console.error('❌ 启动配置热更新管理器失败:', error)
       throw error
     }
   }
@@ -159,7 +158,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
       this.emit('manager:stopped')
       
     } catch (error) {
-      console.error('❌ 停止配置热更新管理器失败:', error)
       throw error
     }
   }
@@ -180,12 +178,10 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
     
     // 监听监听器状态事件
     this.configWatcher.on('watcher:started', () => {
-      console.log('✅ 配置监听器已启动')
       this.emit('watcher:started')
     })
     
     this.configWatcher.on('watcher:stopped', () => {
-      console.log('✅ 配置监听器已停止')
       this.emit('watcher:stopped')
     })
   }
@@ -195,8 +191,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
    */
   private async handleConfigChanged(changeEvent: ConfigChangeEvent): Promise<void> {
     try {
-      console.log('🔄 处理配置变更:', changeEvent.type)
-      
       this.stats.totalConfigChanges++
       this.stats.lastConfigChange = changeEvent.timestamp
       
@@ -204,10 +198,7 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
         this.emit('config:changed', changeEvent)
       }
       
-      console.log('✅ 配置变更处理完成')
-      
     } catch (error) {
-      console.error('❌ 处理配置变更失败:', error)
       this.emit('config:change_error', error)
     }
   }
@@ -216,8 +207,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
    * 处理配置验证失败事件
    */
   private handleValidationFailed(validation: any): void {
-    console.error('❌ 配置验证失败:', validation.errors)
-    
     if (this.options.enableNotifications) {
       this.emit('config:validation_failed', validation)
     }
@@ -228,7 +217,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
    */
   private async handleRecalculationNeeded(changeEvent: ConfigChangeEvent): Promise<void> {
     if (!this.options.enableAutoRecalculation) {
-      console.log('⚠️ 自动重算已禁用，跳过重算')
       return
     }
 
@@ -238,12 +226,10 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
       const runningTasks = activeTasks.filter(task => task.status === 'running')
       
       if (runningTasks.length >= this.options.maxConcurrentRecalculations) {
-        console.log('⚠️ 达到最大并发重算数量，延迟执行')
         // 可以实现队列机制
         return
       }
       
-      console.log('🔄 启动自动重算...')
       const taskIds = await this.recalculationService.handleConfigChange(changeEvent)
       
       this.stats.totalRecalculations += taskIds.length
@@ -252,10 +238,7 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
         this.emit('recalculation:started', { taskIds, changeEvent })
       }
       
-      console.log('✅ 自动重算已启动:', taskIds)
-      
     } catch (error) {
-      console.error('❌ 启动自动重算失败:', error)
       this.emit('recalculation:error', error)
     }
   }
@@ -264,8 +247,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
    * 处理配置变更错误事件
    */
   private handleConfigChangeError(error: any): void {
-    console.error('❌ 配置变更错误:', error)
-    
     if (this.options.enableNotifications) {
       this.emit('config:error', error)
     }
@@ -284,8 +265,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
    * 处理重算状态变更事件
    */
   private handleRecalculationStatusChanged(task: RecalculationTask): void {
-    console.log(`📊 重算任务 ${task.id} 状态变更: ${task.status}`)
-    
     if (this.options.enableNotifications) {
       this.emit('recalculation:status_changed', task)
     }
@@ -302,7 +281,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
    * 手动触发配置检查
    */
   async triggerConfigCheck(): Promise<void> {
-    console.log('🔄 手动触发配置检查...')
     await this.configWatcher.triggerConfigCheck()
   }
 
@@ -310,7 +288,6 @@ export class ConfigHotReloadManager extends SimpleEventEmitter {
    * 手动启动重算
    */
   async triggerRecalculation(type: RecalculationTask['type']): Promise<string> {
-    console.log(`🔄 手动启动重算: ${type}`)
     const taskId = await this.recalculationService.startRecalculation(type)
     
     this.stats.totalRecalculations++

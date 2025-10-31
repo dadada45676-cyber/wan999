@@ -32,8 +32,6 @@ class ConfigHotReloadIntegrationTest {
    * 运行所有集成测试
    */
   async runAllTests(): Promise<TestResult[]> {
-    console.log('🧪 开始配置热更新集成测试...')
-    
     this.testResults = []
     
     // 基础功能测试
@@ -52,7 +50,6 @@ class ConfigHotReloadIntegrationTest {
     // 错误处理测试
     await this.testErrorHandling()
     
-    console.log('✅ 配置热更新集成测试完成')
     this.printTestSummary()
     
     return this.testResults
@@ -88,7 +85,7 @@ class ConfigHotReloadIntegrationTest {
       const validation = await this.configService.validateAllConfigs()
       
       if (!validation.overall.isValid) {
-        console.warn('⚠️ 配置验证发现问题:', validation.overall.errors)
+        // 配置验证发现问题，记录到测试结果中
       }
 
       return { 
@@ -315,7 +312,6 @@ class ConfigHotReloadIntegrationTest {
     const startTime = Date.now()
     
     try {
-      console.log(`🧪 运行测试: ${testName}`)
       const details = await testFn()
       const duration = Date.now() - startTime
       
@@ -327,8 +323,6 @@ class ConfigHotReloadIntegrationTest {
         details
       })
       
-      console.log(`✅ ${testName} - 通过 (${duration}ms)`)
-      
     } catch (error) {
       const duration = Date.now() - startTime
       const message = error instanceof Error ? error.message : String(error)
@@ -339,8 +333,6 @@ class ConfigHotReloadIntegrationTest {
         message,
         duration
       })
-      
-      console.error(`❌ ${testName} - 失败: ${message} (${duration}ms)`)
     }
   }
 
@@ -353,19 +345,7 @@ class ConfigHotReloadIntegrationTest {
     const failedTests = totalTests - passedTests
     const totalDuration = this.testResults.reduce((sum, r) => sum + r.duration, 0)
     
-    console.log('\n📊 测试摘要:')
-    console.log(`总测试数: ${totalTests}`)
-    console.log(`通过: ${passedTests}`)
-    console.log(`失败: ${failedTests}`)
-    console.log(`总耗时: ${totalDuration}ms`)
-    console.log(`成功率: ${((passedTests / totalTests) * 100).toFixed(1)}%`)
-    
-    if (failedTests > 0) {
-      console.log('\n❌ 失败的测试:')
-      this.testResults
-        .filter(r => !r.success)
-        .forEach(r => console.log(`  - ${r.testName}: ${r.message}`))
-    }
+    // 测试摘要信息已记录在testResults中，无需console输出
   }
 
   /**
@@ -387,7 +367,6 @@ if (typeof window === 'undefined') {
     const failedCount = results.filter(r => !r.success).length
     process.exit(failedCount > 0 ? 1 : 0)
   }).catch(error => {
-    console.error('测试执行失败:', error)
     process.exit(1)
   })
 }

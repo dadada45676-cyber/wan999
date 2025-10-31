@@ -24,7 +24,7 @@ class SimpleEventEmitter {
         try {
           listener(...args)
         } catch (error) {
-          console.error(`Error in event listener for ${event}:`, error)
+          // 静默处理事件监听器错误
         }
       })
     }
@@ -129,13 +129,12 @@ export class BatchRecalculationService extends SimpleEventEmitter {
           break
           
         default:
-          console.warn('⚠️ 未知的配置变更类型:', changeEvent.type)
+          // 未知的配置变更类型，跳过处理
       }
       
       return taskIds
       
     } catch (error) {
-      console.error('❌ 处理配置变更重算失败:', error)
       throw error
     }
   }
@@ -206,7 +205,6 @@ export class BatchRecalculationService extends SimpleEventEmitter {
       this.updateTaskStatus(task.id, 'completed')
       
     } catch (error) {
-      console.error(`❌ 重算任务 ${task.id} 失败:`, error)
       this.updateTaskStatus(task.id, 'failed', error.message)
       throw error
     }
@@ -262,7 +260,6 @@ export class BatchRecalculationService extends SimpleEventEmitter {
       }
       
     } catch (error) {
-      console.error('❌ 号码包评级重算失败:', error)
       throw error
     }
   }
@@ -310,10 +307,7 @@ export class BatchRecalculationService extends SimpleEventEmitter {
         }
       }
       
-      console.log('✅ 手机号评级重算完成')
-      
     } catch (error) {
-      console.error('❌ 手机号评级重算失败:', error)
       throw error
     }
   }
@@ -322,8 +316,6 @@ export class BatchRecalculationService extends SimpleEventEmitter {
    * 重算最终等级
    */
   private async recalculateFinalGrades(task: RecalculationTask): Promise<void> {
-    console.log('🏆 开始重算最终等级...')
-    
     try {
       // 获取所有需要重算的手机号（按号码包分组）
       const { data: phoneData, error } = await supabase
@@ -382,13 +374,9 @@ export class BatchRecalculationService extends SimpleEventEmitter {
           this.emit('task:progress', task)
         }
         
-        console.log(`🏆 最终等级重算进度: ${processedCount}/${task.totalItems} (${task.progress.toFixed(1)}%)`)
       }
       
-      console.log('✅ 最终等级重算完成')
-      
     } catch (error) {
-      console.error('❌ 最终等级重算失败:', error)
       throw error
     }
   }
@@ -397,8 +385,6 @@ export class BatchRecalculationService extends SimpleEventEmitter {
    * 重算所有数据
    */
   private async recalculateAll(task: RecalculationTask): Promise<void> {
-    console.log('🔄 开始重算所有数据...')
-    
     try {
       // 分步骤执行，每个步骤占总进度的1/3
       const steps = [
@@ -409,7 +395,6 @@ export class BatchRecalculationService extends SimpleEventEmitter {
       
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i]
-        console.log(`🔄 执行步骤 ${i + 1}/3: ${step.name}`)
         
         // 重置任务进度用于当前步骤
         const stepTask = { ...task }
@@ -424,14 +409,9 @@ export class BatchRecalculationService extends SimpleEventEmitter {
         if (this.options.enableProgressReporting) {
           this.emit('task:progress', task)
         }
-        
-        console.log(`✅ 步骤 ${i + 1}/3 完成: ${step.name}`)
       }
       
-      console.log('✅ 所有数据重算完成')
-      
     } catch (error) {
-      console.error('❌ 重算所有数据失败:', error)
       throw error
     }
   }

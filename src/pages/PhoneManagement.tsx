@@ -138,7 +138,6 @@ const PhoneManagement: React.FC = () => {
         
         setRatingScoreMap(scores)
       } catch (error) {
-        console.error('加载评级分数映射失败，使用默认值:', error)
         // 保持默认值
       }
     }
@@ -199,7 +198,6 @@ const PhoneManagement: React.FC = () => {
             }
           }
         } catch (error) {
-          console.error('自动评分计算失败:', error)
           // 不影响评级提交的成功状态
         }
         

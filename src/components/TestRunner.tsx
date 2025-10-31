@@ -49,7 +49,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({ className = '' }) => {
       })
       
     } catch (error) {
-      console.error('测试执行失败:', error)
       setTestResults([{
         testName: '测试执行',
         success: false,
