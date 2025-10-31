@@ -3,12 +3,6 @@
 import React, { useState, useEffect } from 'react'
 import { 
   Shield, 
-  AlertTriangle, 
-  Users, 
-  Lock, 
-  Unlock, 
-  Eye, 
-  EyeOff, 
   RefreshCw,
   Clock,
   Globe,
@@ -16,10 +10,15 @@ import {
   TrendingUp,
   TrendingDown,
   CheckCircle,
-  XCircle
+  XCircle,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import { SecurityManager } from '../utils/securityManager'
 import { SECURITY_CONFIG } from '../types/auth'
+import { SettingsService } from '../services/settings'
+import { useToast } from '../hooks/useToast'
 
 interface SecurityStatsCardProps {
   title: string
@@ -129,6 +128,7 @@ const LoginAttemptRow: React.FC<LoginAttemptRowProps> = ({ attempt }) => {
 }
 
 const SecuritySettings: React.FC = () => {
+  const { success, error } = useToast()
   const [securityStats, setSecurityStats] = useState({
     totalAttempts: 0,
     failedAttempts: 0,
@@ -138,6 +138,8 @@ const SecuritySettings: React.FC = () => {
     recentAttempts: []
   })
   const [isLoading, setIsLoading] = useState(true)
+  
+
 
   // 加载安全统计数据
   const loadSecurityStats = () => {
@@ -151,6 +153,8 @@ const SecuritySettings: React.FC = () => {
       setIsLoading(false)
     }
   }
+
+
 
   // 清理过期数据
   const handleCleanupData = () => {
@@ -246,6 +250,8 @@ const SecuritySettings: React.FC = () => {
           color={securityStats.lockedIPs > 0 ? 'red' : 'green'}
         />
       </div>
+
+
 
       {/* 安全配置信息 */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, User, Mail, Phone, Building, Shield, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { UserRole, UserStatus, CreateUserForm as CreateUserFormData } from '../types/auth';
+import { isValidEmail, validatePassword, validateUserName } from '../utils/validators';
 
 interface CreateUserFormProps {
   isOpen: boolean;
@@ -24,20 +25,23 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({
   const validateForm = (): boolean => {
     const newErrors: Partial<CreateUserFormData> = {};
 
-    if (!formData.name.trim()) {
-      newErrors.name = '请输入用户姓名';
+    // 验证用户名
+    const nameValidation = validateUserName(formData.name);
+    if (!nameValidation.isValid) {
+      newErrors.name = nameValidation.error;
     }
 
+    // 验证邮箱
     if (!formData.email.trim()) {
       newErrors.email = '请输入邮箱地址';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    } else if (!isValidEmail(formData.email)) {
       newErrors.email = '请输入有效的邮箱地址';
     }
 
-    if (!formData.password.trim()) {
-      newErrors.password = '请输入密码';
-    } else if (formData.password.length < 8) {
-      newErrors.password = '密码长度至少8位';
+    // 验证密码
+    const passwordValidation = validatePassword(formData.password);
+    if (!passwordValidation.isValid) {
+      newErrors.password = passwordValidation.errors[0];
     }
 
     setErrors(newErrors);

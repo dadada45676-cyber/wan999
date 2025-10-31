@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { Upload, Search, Filter, Download, Eye, Trash2, Package, FileText, AlertCircle, CheckCircle, Clock, Calendar, Globe, Smartphone, Building, Info, X, Plus, Star, Award, TrendingUp, TrendingDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { Upload, Download, Eye, Package, FileText, AlertCircle, CheckCircle, Clock, Globe, X, ChevronUp, ChevronDown, Award, Building, Info, TrendingUp, TrendingDown, Smartphone, Star, Plus, Filter, Search } from 'lucide-react'
 import { useAppStore } from '../store'
 import { useCountry } from '../store/country'
 import { PhonePackage } from '../types'
@@ -13,6 +13,8 @@ import Button from '../components/Button'
 import { tableStyles, tableRowHeights, tableTextStyles } from '../styles/tableStyles'
 import CountrySelector from '../components/CountrySelector'
 import { PackageService, FileUploadService } from '../services/package'
+import { formatFileSize, formatDateTime } from '../utils/formatters'
+import { ALLOWED_FILE_TYPES } from '../constants'
 
 const PackageManagement: React.FC = () => {
   const { 
@@ -26,6 +28,8 @@ const PackageManagement: React.FC = () => {
     calculateConversionRate,
     getPackageGrade
   } = useAppStore()
+  
+  const getFinalGrade = useAppStore(state => state.getFinalGrade)
   
   const { selectedCountry, countries } = useCountry()
   const { toasts, success, error, warning, removeToast } = useToast()
@@ -89,7 +93,7 @@ const PackageManagement: React.FC = () => {
     }
     
     loadData()
-  }, [packages.length, phoneRatings.length, phoneScores.length, addPackage, addPhoneRating, addPhoneScore])
+  }, [packages.length, phoneRatings.length, phoneScores.length])
 
   // 万分转化数计算函数
   const calculateConversionRateValue = (firstChargeCount: number, totalPhoneCount: number): number => {
@@ -97,14 +101,23 @@ const PackageManagement: React.FC = () => {
     return Math.round((firstChargeCount / totalPhoneCount) * 10000)
   }
 
-  // 评级计算函数（基于万分转化数）
-  const calculateGrade = (conversionRate: number): "A" | "B" | "C" | "D" | "S" | "SS" => {
-    if (conversionRate >= 50) return 'SS'
-    if (conversionRate >= 30) return 'S'
-    if (conversionRate >= 20) return 'A'
-    if (conversionRate >= 16) return 'B' // 保本线
-    if (conversionRate >= 10) return 'C'
-    return 'D'
+  // 评级计算函数（基于万分转化数）- 使用配置服务
+  const calculateGrade = async (conversionRate: number): Promise<"A" | "B" | "C" | "D" | "S" | "SS"> => {
+    try {
+      const grade = await getPackageGrade(conversionRate)
+      // 将E级映射为D级（号码包不使用E级）
+      if (grade === 'E') return 'D'
+      return grade as "A" | "B" | "C" | "D" | "S" | "SS"
+    } catch (error) {
+      console.error('获取评级配置失败，使用默认逻辑:', error)
+      // 降级到默认逻辑
+      if (conversionRate >= 50) return 'SS'
+      if (conversionRate >= 30) return 'S'
+      if (conversionRate >= 20) return 'A'
+      if (conversionRate >= 16) return 'B' // 保本线
+      if (conversionRate >= 10) return 'C'
+      return 'D'
+    }
   }
 
   // 巴西号码验证函数
@@ -125,8 +138,8 @@ const PackageManagement: React.FC = () => {
     }
 
     // 文件格式检查
-    const allowedTypes = ['text/plain', 'text/csv', 'application/csv']
-    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(txt|csv)$/i)) {
+    const allowedTypes = ALLOWED_FILE_TYPES.TEXT
+    if (!allowedTypes.includes(file.type as any) && !file.name.match(/\.(txt|csv)$/i)) {
       error('文件格式不支持', '只支持TXT和CSV格式文件，请选择正确的文件格式')
       return
     }
@@ -295,6 +308,10 @@ const PackageManagement: React.FC = () => {
       setUploadMessage('正在创建套餐记录...')
       setUploadProgressState(10)
 
+      // 计算万分转化数和评级（使用配置服务）
+      const conversionRate = calculateConversionRateValue(uploadForm.firstChargeCount, uploadForm.totalPhoneCount)
+      const grade = await calculateGrade(conversionRate)
+
       const createPackageForm = {
         name: uploadForm.packageName,
         description: uploadForm.description || `${uploadForm.smsProvider} - ${uploadForm.source}`,
@@ -302,8 +319,8 @@ const PackageManagement: React.FC = () => {
         sendTime: uploadForm.sendTime,
         totalPhoneCount: uploadForm.totalPhoneCount,
         firstChargeCount: uploadForm.firstChargeCount,
-        conversionRate: calculateConversionRateValue(uploadForm.firstChargeCount, uploadForm.totalPhoneCount),
-        grade: calculateGrade(calculateConversionRateValue(uploadForm.firstChargeCount, uploadForm.totalPhoneCount)),
+        conversionRate: conversionRate,
+        grade: grade,
         smsProvider: uploadForm.smsProvider,
         source: uploadForm.source,
         gamePlatform: uploadForm.gamePlatform,
@@ -352,13 +369,28 @@ const PackageManagement: React.FC = () => {
       
       setUploadProgressState(95)
 
-      // 阶段4: 完成处理
+      // 阶段4: 号码继承包评级
       setUploadStage('completing')
-      setUploadMessage('正在生成分析报告...')
+      setUploadMessage('正在为号码分配包评级...')
 
-      // 计算万分转化数和评级
-      const conversionRate = calculateConversionRateValue(uploadForm.firstChargeCount, uploadForm.totalPhoneCount)
-      const grade = calculateGrade(conversionRate)
+      // 重新计算评级（确保一致性）
+      const finalConversionRate = calculateConversionRateValue(uploadForm.firstChargeCount, uploadForm.totalPhoneCount)
+      const finalGrade = await calculateGrade(finalConversionRate)
+
+      // 为号码分配包评级（号码继承包评级逻辑）
+      if (phoneNumbers.length > 0) {
+        setUploadMessage('正在为号码分配包评级...')
+        const assignResult = await PackageService.assignPackageGradeToPhones(packageId, phoneNumbers)
+        
+        if (!assignResult.success) {
+          console.warn('号码包评级分配失败:', assignResult.error)
+          // 不阻断流程，只记录警告
+        } else {
+          console.log(`成功为 ${assignResult.assignedCount} 个号码分配了包评级`)
+        }
+      }
+
+      setUploadMessage('正在生成分析报告...')
 
       // 创建新包（符合PhonePackage类型）
       const newPackage: PhonePackage = {
@@ -366,8 +398,8 @@ const PackageManagement: React.FC = () => {
         valid_phones: phoneNumbers.length,
         invalid_phones: uploadForm.totalPhoneCount - phoneNumbers.length,
         duplicate_phones: 0,
-        conversion_rate: conversionRate,
-        grade: grade as 'SS' | 'S' | 'A' | 'B' | 'C' | 'D',
+        conversion_rate: finalConversionRate,
+        grade: finalGrade as 'SS' | 'S' | 'A' | 'B' | 'C' | 'D',
         status: 'completed' as const,
         upload_progress: 100,
         upload_time: new Date().toISOString(),
@@ -598,19 +630,7 @@ const PackageManagement: React.FC = () => {
     return styles[status as keyof typeof styles] || styles['processing']
   }
 
-  // 格式化文件大小
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
 
-  // 格式化日期
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleString('zh-CN')
-  }
 
   // 根据国家代码获取国家信息
   const getCountryInfo = (countryCode: string) => {
@@ -1566,7 +1586,7 @@ const PackageManagement: React.FC = () => {
                           
                           <div>
                             <label className="text-sm font-medium text-gray-500">上传时间</label>
-                            <div className="text-base text-gray-900">{formatDate(pkg.uploadTime)}</div>
+                            <div className="text-base text-gray-900">{formatDateTime(pkg.uploadTime)}</div>
                           </div>
                           
                           <div>

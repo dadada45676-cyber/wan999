@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useAppStore } from '../store'
 import { useCountry } from '../store/country'
 
-import { Upload, FileText, Settings, Activity, Database, Cpu, Wifi, TrendingUp, TrendingDown, Users, Package, Target, BarChart3, PieChart as PieChartIcon, RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react'
+import { Activity, Users, Package, Target, BarChart3, PieChart as PieChartIcon, RefreshCw, AlertCircle, CheckCircle, Clock, TrendingUp, TrendingDown } from 'lucide-react'
 import CountrySelector from '../components/CountrySelector'
 
 const Dashboard: React.FC = () => {
@@ -21,6 +21,12 @@ const Dashboard: React.FC = () => {
   // 国家选择状态
   const { selectedCountry } = useCountry()
 
+  // 简化的加载状态管理
+  const [isLoading, setIsLoading] = useState(true)
+  
+  // 图表渲染状态 - 简单的延迟渲染机制
+  const [chartsReady, setChartsReady] = useState(false)
+
   // 实时监控状态
   const [systemStatus, setSystemStatus] = useState({
     processingTasks: 3,
@@ -28,6 +34,23 @@ const Dashboard: React.FC = () => {
     dbConnection: 'connected',
     lastUpdate: new Date()
   })
+
+  // 初始化加载和图表渲染延迟
+  useEffect(() => {
+    const loadingTimer = setTimeout(() => {
+      setIsLoading(false)
+    }, 1000) // 1秒加载延迟
+
+    // 图表渲染延迟 - 确保 DOM 完全渲染后再显示图表
+    const chartsTimer = setTimeout(() => {
+      setChartsReady(true)
+    }, 1200) // 在数据加载完成后额外延迟200ms
+
+    return () => {
+      clearTimeout(loadingTimer)
+      clearTimeout(chartsTimer)
+    }
+  }, [])
 
   // 自动刷新实时数据
   useEffect(() => {
@@ -275,52 +298,61 @@ const Dashboard: React.FC = () => {
               <BarChart3 className="w-6 h-6" />
             </div>
           </div>
-          <div className="h-80">
-            {trendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData}>
-                <defs>
-                  <linearGradient id="conversionGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis 
-                  dataKey="date" 
-                  stroke="#64748b"
-                  fontSize={12}
-                />
-                <YAxis 
-                  stroke="#64748b"
-                  fontSize={12}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
-                  }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="conversionRate" 
-                  stroke="#6366f1" 
-                  strokeWidth={3}
-                  fill="url(#conversionGradient)"
-                  name="万分转化数"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                <BarChart3 className="w-16 h-16 mb-4 opacity-30" />
-                <p className="text-lg font-medium">暂无数据</p>
-                <p className="text-sm">请先上传数据包以查看趋势分析</p>
-              </div>
-            )}
-          </div>
+          <div className="h-80 min-h-[320px] w-full min-w-[300px] relative overflow-hidden" style={{ minHeight: '320px', minWidth: '300px' }}>
+            {trendData.length > 0 && !isLoading && chartsReady ? (
+            <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={320}>
+              <AreaChart data={trendData}>
+              <defs>
+                <linearGradient id="conversionGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis 
+                dataKey="date" 
+                stroke="#64748b"
+                fontSize={12}
+              />
+              <YAxis 
+                stroke="#64748b"
+                fontSize={12}
+              />
+              <Tooltip 
+                contentStyle={{
+                  backgroundColor: 'white',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                }}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="conversionRate" 
+                stroke="#6366f1" 
+                strokeWidth={3}
+                fill="url(#conversionGradient)"
+                name="万分转化数"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mb-4"></div>
+                  <p className="text-lg font-medium">图表加载中...</p>
+                </>
+              ) : (
+                <>
+                  <BarChart3 className="w-16 h-16 mb-4 opacity-30" />
+                  <p className="text-lg font-medium">暂无数据</p>
+                  <p className="text-sm">请先上传数据包以查看趋势分析</p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
         </div>
 
         {/* 等级分布饼图 */}
@@ -334,9 +366,9 @@ const Dashboard: React.FC = () => {
               <PieChartIcon className="w-6 h-6" />
             </div>
           </div>
-          <div className="h-80">
-            {gradeDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+          <div className="h-80 min-h-[320px] w-full min-w-[300px] relative overflow-hidden" style={{ minHeight: '320px', minWidth: '300px' }}>
+            {gradeDistribution.length > 0 && !isLoading && chartsReady ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={320}>
                 <PieChart>
                 <Pie
                   data={gradeDistribution}
@@ -363,9 +395,18 @@ const Dashboard: React.FC = () => {
             </ResponsiveContainer>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                <PieChartIcon className="w-16 h-16 mb-4 opacity-30" />
-                <p className="text-lg font-medium">暂无数据</p>
-                <p className="text-sm">请先上传数据包以查看等级分布</p>
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mb-4"></div>
+                    <p className="text-lg font-medium">图表加载中...</p>
+                  </>
+                ) : (
+                  <>
+                    <PieChartIcon className="w-16 h-16 mb-4 opacity-30" />
+                    <p className="text-lg font-medium">暂无数据</p>
+                    <p className="text-sm">请先上传数据包以查看等级分布</p>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -396,9 +437,9 @@ const Dashboard: React.FC = () => {
             <Activity className="w-6 h-6" />
           </div>
         </div>
-        <div className="h-80">
-          {trendData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+        <div className="h-80 min-h-[320px] w-full min-w-[300px] relative overflow-hidden" style={{ minHeight: '320px', minWidth: '300px' }}>
+          {trendData.length > 0 && !isLoading && chartsReady ? (
+            <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={320}>
               <BarChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis 
@@ -428,9 +469,18 @@ const Dashboard: React.FC = () => {
             </ResponsiveContainer>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
-              <Activity className="w-16 h-16 mb-4 opacity-30" />
-              <p className="text-lg font-medium">暂无数据</p>
-              <p className="text-sm">请先上传数据包以查看处理量统计</p>
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mb-4"></div>
+                  <p className="text-lg font-medium">图表加载中...</p>
+                </>
+              ) : (
+                <>
+                  <Activity className="w-16 h-16 mb-4 opacity-30" />
+                  <p className="text-lg font-medium">暂无数据</p>
+                  <p className="text-sm">请先上传数据包以查看处理量统计</p>
+                </>
+              )}
             </div>
           )}
         </div>

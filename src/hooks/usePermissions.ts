@@ -68,10 +68,6 @@ export const usePermissions = () => {
     return hasPermission(PERMISSIONS.PAGE_SETTINGS)
   }, [hasPermission])
 
-  const canAccessReport = useCallback((): boolean => {
-    return hasPermission(PERMISSIONS.PAGE_REPORT)
-  }, [hasPermission])
-
   const canAccessAnalysis = useCallback((): boolean => {
     return hasPermission(PERMISSIONS.PAGE_ANALYSIS)
   }, [hasPermission])
@@ -81,7 +77,6 @@ export const usePermissions = () => {
   const canManagePackages = canAccessPackage
   const canViewAnalysis = canAccessAnalysis
   const canManagePhones = canAccessPhone
-  const canViewReports = canAccessReport
 
   // 根据用户权限动态生成可访问的导航菜单
   const getAccessibleMenus = useCallback(() => {
@@ -132,16 +127,6 @@ export const usePermissions = () => {
       })
     }
 
-    // 报告中心
-    if (canAccessReport()) {
-      menus.push({
-        key: 'reports',
-        path: '/reports',
-        label: '报告中心',
-        icon: 'FileText'
-      })
-    }
-
     // 系统设置
     if (canAccessSettings()) {
       menus.push({
@@ -152,18 +137,8 @@ export const usePermissions = () => {
       })
     }
 
-    // 测试页面 - 仅管理员可访问
-    if (isAdmin()) {
-      menus.push({
-        key: 'test',
-        path: '/test',
-        label: '系统测试',
-        icon: 'Shield'
-      })
-    }
-
     return menus
-  }, [isAuthenticated, canAccessPackage, canAccessAnalysis, canAccessPhone, canAccessReport, canAccessSettings, isAdmin])
+  }, [isAuthenticated, canAccessPackage, canAccessAnalysis, canAccessPhone, canAccessSettings, isAdmin])
 
   return {
     // 基础状态
@@ -186,7 +161,6 @@ export const usePermissions = () => {
     canAccessPhone,
     canAccessUser,
     canAccessSettings,
-    canAccessReport,
     canAccessAnalysis,
     
     // 向下兼容的别名方法
@@ -194,7 +168,6 @@ export const usePermissions = () => {
     canManagePackages,
     canViewAnalysis,
     canManagePhones,
-    canViewReports,
     
     // 导航菜单
     getAccessibleMenus
@@ -212,7 +185,6 @@ export const useRoutePermissions = (routePath: string) => {
     canAccessPhone,
     canAccessUser,
     canAccessSettings,
-    canAccessReport,
     canAccessAnalysis,
     isAdmin
   } = usePermissions()
@@ -228,19 +200,15 @@ export const useRoutePermissions = (routePath: string) => {
         return canAccessAnalysis()
       case '/phones':
         return canAccessPhone()
-      case '/reports':
-        return canAccessReport()
       case '/settings':
         return canAccessSettings() || canAccessUser() // 系统设置或用户管理权限
-      case '/test':
-        return isAdmin() // 测试页面仅管理员可访问
       case '/login':
         return true // 登录页面始终可访问
       default:
         // 未定义的路由，默认需要登录
         return isAuthenticated
     }
-  }, [routePath, isAuthenticated, canAccessPackage, canAccessPhone, canAccessUser, canAccessSettings, canAccessReport, canAccessAnalysis, isAdmin])
+  }, [routePath, isAuthenticated, canAccessPackage, canAccessPhone, canAccessUser, canAccessSettings, canAccessAnalysis, isAdmin])
 
   // 获取重定向路径
   const getRedirectPath = useCallback((): string => {

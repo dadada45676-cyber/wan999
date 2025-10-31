@@ -8,12 +8,12 @@ import {
   FileText, 
   Settings,
   Menu,
-  X,
   Home,
   User,
   LogOut,
   Shield,
   ChevronDown,
+  X,
   Clock
 } from 'lucide-react'
 import { useAuth, useAuthActions } from '../store/auth'

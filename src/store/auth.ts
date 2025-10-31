@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { AuthService, AuthStateListener } from '../services/auth'
-import { log } from '../utils/logger'
+import { log as logger } from '../utils/logger'
 import { 
   User, 
   LoginForm, 
@@ -534,7 +534,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return true
       
     } catch (error) {
-      log.error('系统初始化失败', error, 'AuthStore')
+      logger.error('系统初始化失败', error, 'AuthStore')
       return false
     } finally {
       set({ isLoading: false })

@@ -465,16 +465,14 @@ export class AuthService {
     const ROLE_PERMISSIONS = {
       admin: [
         'page.package',
-        'page.phone', 
+        'page.phone',
         'page.user',
         'page.settings',
-        'page.report',
         'page.analysis'
       ],
       operator: [
         'page.package',
         'page.phone',
-        'page.report', 
         'page.analysis'
       ]
     }

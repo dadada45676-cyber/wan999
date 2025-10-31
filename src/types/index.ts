@@ -46,6 +46,11 @@ export interface SystemSettings {
   ratingScoreMap: {
     [key: string]: number
   }
+  antiFalsePositiveConfig: {
+    threshold: number
+    enabled: boolean
+    description: string
+  }
 }
 
 // 号码包相关类型

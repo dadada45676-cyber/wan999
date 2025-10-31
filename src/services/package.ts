@@ -610,6 +610,123 @@ export class PackageService {
     }
   }
 
+  // 为号码分配包评级（号码继承包评级逻辑）
+  static async assignPackageGradeToPhones(packageId: string, phoneNumbers: string[]): Promise<{ success: boolean; error?: string; assignedCount?: number }> {
+    try {
+      const response = await APIUtils.apiCall(
+        async () => {
+          // 1. 获取包的评级信息
+          const { data: packageData, error: packageError } = await supabase
+            .from('phone_packages')
+            .select('grade, conversion_rate, country_code')
+            .eq('id', packageId)
+            .single()
+
+          if (packageError || !packageData) {
+            throw new Error('获取包信息失败')
+          }
+
+          const packageGrade = packageData.grade
+          const packageConversionRate = packageData.conversion_rate || 0
+          const countryCode = packageData.country_code
+
+          // 2. 为每个号码创建评分记录，继承包评级
+          const phoneScoreRecords = phoneNumbers.map(phoneNumber => ({
+            phone_number: phoneNumber,
+            package_id: packageId,
+            country_code: countryCode,
+            rating_count: 1, // 初始评级次数为1（来自包评级）
+            total_score: packageConversionRate, // 使用包的转化率作为初始分数
+            average_score: packageConversionRate,
+            final_grade: packageGrade, // 继承包评级
+            package_grade: packageGrade, // 记录包评级
+            is_package_inherited: true, // 标记为包继承评级
+            last_rating_time: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }))
+
+          // 3. 批量插入或更新号码评分记录
+          const { data: insertedData, error: insertError } = await supabase
+            .from('phone_scores')
+            .upsert(phoneScoreRecords, {
+              onConflict: 'phone_number',
+              ignoreDuplicates: false
+            })
+            .select()
+
+          if (insertError) {
+            throw new Error(`批量分配包评级失败: ${insertError.message}`)
+          }
+
+          // 4. 为每个号码创建评级记录
+          const phoneRatingRecords = phoneNumbers.map(phoneNumber => ({
+            phone_number: phoneNumber,
+            package_id: packageId,
+            country_code: countryCode,
+            rating_grade: packageGrade,
+            rating_score: packageConversionRate,
+            final_grade: packageGrade,
+            is_package_rating: true, // 标记为包评级
+            rating_source: 'package_inheritance', // 评级来源
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }))
+
+          const { data: ratingData, error: ratingError } = await supabase
+            .from('phone_ratings')
+            .insert(phoneRatingRecords)
+            .select()
+
+          if (ratingError) {
+            throw new Error(`创建包评级记录失败: ${ratingError.message}`)
+          }
+
+          return {
+            success: true,
+            assignedCount: phoneNumbers.length,
+            phoneScores: insertedData,
+            phoneRatings: ratingData
+          }
+        },
+        { 
+          operation: `packages:assign-grade:${packageId}`,
+          cache: false, 
+          retries: 1 
+        }
+      )
+
+      if (response.success && response.data) {
+        // 清除相关缓存
+        APIUtils.cache.delete(`packages:ratings:${packageId}`)
+        APIUtils.cache.delete(`packages:stats:${packageId}`)
+        
+        // 清除号码相关缓存
+        phoneNumbers.forEach(phoneNumber => {
+          APIUtils.cache.delete(`phone-scores:${phoneNumber}`)
+          APIUtils.cache.delete(`phone-ratings:${phoneNumber}`)
+          APIUtils.cache.delete(`phone-ratings:${phoneNumber}:${packageId}`)
+        })
+
+        return {
+          success: true,
+          assignedCount: response.data.assignedCount
+        }
+      }
+
+      return {
+        success: false,
+        error: response.error?.message || '分配包评级失败'
+      }
+    } catch (error) {
+      log.error('PackageService.assignPackageGradeToPhones error', error, 'PackageService')
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '分配包评级失败'
+      }
+    }
+  }
+
   // 获取套餐统计信息
   static async getPackageStats(packageId: string): Promise<{
     totalRatings: number

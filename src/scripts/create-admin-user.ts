@@ -51,7 +51,6 @@ async function createAdminUser() {
     }
     
     if (existingProfiles && existingProfiles.length > 0) {
-      console.log('ℹ️  管理员用户已存在');
       return;
     }
     
@@ -94,12 +93,6 @@ async function createAdminUser() {
     
     // 4. 同步到user_profiles
     await syncUserProfile(authData.user.id);
-    
-    // 5. 显示登录信息
-    console.log('✅ 管理员用户创建完成');
-    console.log('📧 邮箱:', ADMIN_USER.email);
-    console.log('🔑 密码:', ADMIN_USER.password);
-    console.log('⚠️  请首次登录后立即修改密码!');
     
   } catch (error) {
     console.error('❌ 创建管理员用户时发生错误:', error);

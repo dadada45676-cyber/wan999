@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { PackageService, FileUploadService } from '../services/package'
 import { ReportService } from '../services/report'
 import { SettingsService } from '../services/settings'
-import { log } from '../utils/logger'
+import { log as logger } from '../utils/logger'
 import type { 
   PhonePackage, 
   PhoneRating, 
@@ -11,6 +11,31 @@ import type {
   SystemSettings,
   EditPackageForm
 } from '../types'
+import { ConfigService } from '../services/configService'
+import { ConfigHotReloadManager } from '../services/configHotReloadManager'
+import { antiFalsePositiveService } from '../services/antiFalsePositiveService'
+import { comprehensiveScoringService, type ComprehensiveScoringResult, type BatchScoringRequest } from '../services/comprehensiveScoringService'
+import { finalGradeAssessmentService, type FinalGradeAssessmentResult, type BatchGradeAssessmentRequest } from '../services/finalGradeAssessmentService'
+import { supabase } from '../lib/supabase'
+
+// 创建配置服务实例
+const configService = ConfigService.getInstance()
+
+// 创建热更新管理器实例
+const hotReloadManager = ConfigHotReloadManager.getInstance({
+  enableAutoRecalculation: true,
+  enableNotifications: true,
+  maxConcurrentRecalculations: 2,
+  watcher: {
+    enableRealTimeUpdates: true,
+    pollInterval: 5000
+  },
+  recalculation: {
+    batchSize: 100,
+    maxConcurrency: 3,
+    enableProgressReporting: true
+  }
+})
 
 // 报告筛选类型
 export interface ReportFilter {
@@ -75,7 +100,7 @@ interface AppState {
   setPhoneScores: (scores: PhoneScore[]) => void
   addPhoneScore: (score: PhoneScore) => void
   updatePhoneScore: (phoneNumber: string, updates: Partial<PhoneScore>) => void
-  calculatePhoneScore: (phoneNumber: string) => void
+  calculatePhoneScore: (phoneNumber: string, packageId?: string) => Promise<number>
   getPhonesByGrade: (grade: 'A' | 'B' | 'C' | 'D' | 'E') => PhoneScore[]
   
   // 异步API方法 - 号码综合评分
@@ -103,21 +128,131 @@ interface AppState {
   updateSettings: (settings: Partial<SystemSettings>) => void
   
   // 异步API方法 - 系统设置
-  loadSystemSettings: () => Promise<boolean>
-  saveSystemSettings: (settings: Partial<SystemSettings>) => Promise<boolean>
-  resetSystemSettings: () => Promise<boolean>
-  updateCategorySettings: (category: string, categorySettings: Record<string, any>) => Promise<boolean>
+  loadSystemSettings: () => Promise<SystemSettings | null>
+  saveSystemSettings: (settings: Partial<SystemSettings>) => Promise<SystemSettings>
+  resetSystemSettings: () => Promise<SystemSettings>
+  updateCategorySettings: (category: string, categorySettings: Record<string, any>) => Promise<SystemSettings | null>
+  
+  // 评级分数映射相关方法
+  loadRatingScoreMapping: () => Promise<Record<string, number>>
+  updateRatingScoreMapping: (scoreMap: Record<string, number>) => Promise<Record<string, number>>
+  resetRatingScoreMappingToDefault: () => Promise<Record<string, number>>
+  validateRatingScoreMapping: (scoreMap: Record<string, number>) => { isValid: boolean; errors: Record<string, string> }
+  
+  // 配置验证相关方法
+  validateAllConfigs: () => Promise<{
+    overall: { isValid: boolean; errors: string[]; warnings: string[] };
+    details: Record<string, { isValid: boolean; errors: string[]; warnings: string[] }>;
+  }>
+  getConfigStatus: () => Promise<{
+    cacheStatus: Record<string, boolean>;
+    lastUpdated: Record<string, string>;
+    validation: {
+      overall: { isValid: boolean; errors: string[]; warnings: string[] };
+      details: Record<string, { isValid: boolean; errors: string[]; warnings: string[] }>;
+    };
+  }>
+  reloadConfigs: () => Promise<void>
+  
+  // 配置热更新相关方法
+  startConfigHotReload: () => Promise<void>
+  stopConfigHotReload: () => Promise<void>
+  getHotReloadStatus: () => {
+    isActive: boolean;
+    watcherStatus: any;
+    activeRecalculations: any[];
+    lastConfigChange?: Date;
+    totalConfigChanges: number;
+    totalRecalculations: number;
+  }
+  triggerManualRecalculation: (configTypes?: ('package_grades' | 'phone_ratings' | 'final_grades' | 'all')[]) => Promise<void>
+  
+  // 防误杀机制相关方法
+  checkAntiFalsePositive: (phoneNumber: string, packageId?: string) => Promise<{
+    shouldCalculateScore: boolean
+    reason: string
+    packageCount: number
+    ratingCount: number
+    threshold: number
+    minRatingCount: number
+  }>
+  batchCheckAntiFalsePositive: (phoneNumbers: string[], packageId?: string) => Promise<Record<string, any>>
+  getAntiFalsePositiveStats: (packageId?: string) => Promise<{
+    totalPhones: number
+    passedPhones: number
+    blockedPhones: number
+    passRate: number
+    blockedReasons: Record<string, number>
+  }>
+  validateAntiFalsePositiveConfig: (config: { threshold: number; enabled: boolean; description: string }) => {
+    isValid: boolean
+    errors: string[]
+    warnings: string[]
+  }
+  
+  // 综合评分计算相关方法
+  calculateComprehensiveScore: (phoneNumber: string, packageId?: string) => Promise<ComprehensiveScoringResult>
+  batchCalculateComprehensiveScore: (request: BatchScoringRequest) => Promise<{
+    results: ComprehensiveScoringResult[]
+    summary: {
+      totalProcessed: number
+      successCount: number
+      failureCount: number
+      antiFalsePositiveTriggered: number
+      averageScore: number
+    }
+  }>
+  getComprehensiveScoringStats: (packageId?: string) => Promise<{
+    totalNumbers: number
+    scoredNumbers: number
+    averageScore: number
+    maxScore: number
+    minScore: number
+    scoreDistribution: Record<string, number>
+  }>
+  
+  // 最终等级评定相关方法
+  assessFinalGrade: (phoneNumber: string, packageId?: string, updateDatabase?: boolean) => Promise<FinalGradeAssessmentResult>
+  batchAssessFinalGrade: (request: BatchGradeAssessmentRequest) => Promise<{
+    results: FinalGradeAssessmentResult[]
+    summary: {
+      totalProcessed: number
+      successCount: number
+      failureCount: number
+      gradeDistribution: Record<'A' | 'B' | 'C' | 'D' | 'E', number>
+      averageScore: number
+      gradeChanges: number
+    }
+  }>
+  getGradeStatistics: (packageId?: string) => Promise<{
+    totalNumbers: number
+    gradeDistribution: Record<'A' | 'B' | 'C' | 'D' | 'E', number>
+    averageScore: number
+    scoreDistribution: Record<string, number>
+    gradePercentages: Record<'A' | 'B' | 'C' | 'D' | 'E', number>
+  }>
+  reassessAllGrades: (packageId?: string) => Promise<{
+    totalProcessed: number
+    successCount: number
+    failureCount: number
+    gradeChanges: number
+  }>
   
   // 操作方法 - UI状态
   setLoading: (loading: boolean) => void
   setSelectedPackageId: (id: string | null) => void
   setUploadProgress: (progress: number) => void
   
-  // 业务逻辑方法
+  // 业务逻辑方法（现在都是异步的）
   calculateConversionRate: (firstChargeCount: number, phoneCount: number) => number
-  getPackageGrade: (conversionRate: number) => 'A' | 'B' | 'C' | 'D' | 'E'
-  getRatingScore: (rating: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D') => number
-  getFinalGrade: (averageScore: number) => 'A' | 'B' | 'C' | 'D' | 'E'
+  getPackageGrade: (conversionRate: number) => Promise<'A' | 'B' | 'C' | 'D' | 'E'>
+  getRatingScore: (rating: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D') => Promise<number>
+  getFinalGrade: (averageScore: number) => Promise<'A' | 'B' | 'C' | 'D' | 'E'>
+  
+  // 异步业务逻辑方法
+  getPackageGradeAsync: (conversionRate: number) => Promise<'A' | 'B' | 'C' | 'D' | 'E'>
+  getRatingScoreAsync: (rating: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D') => Promise<number>
+  getFinalGradeAsync: (averageScore: number) => Promise<'A' | 'B' | 'C' | 'D' | 'E'>
 }
 
 // 创建store
@@ -139,7 +274,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       threshold: 16,
       warningLine: 12,
       dangerLine: 8,
-      unit: '万分之',
+      unit: '万分转化数',
       description: '基于万分转化数的保本线配置'
     },
     finalGradeConfig: [
@@ -171,6 +306,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       'B': 70,
       'C': 60,
       'D': 50
+    },
+    antiFalsePositiveConfig: {
+      threshold: 0.8,
+      enabled: true,
+      description: '防误判配置，用于提高评级准确性'
     }
   },
   
@@ -201,7 +341,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ packages, loading: false })
       return true
     } catch (error) {
-      log.error('加载号码包失败', error, 'AppStore')
+      logger.error('加载号码包失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -237,7 +377,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false })
       return false
     } catch (error) {
-      log.error('创建号码包失败', error, 'AppStore')
+      logger.error('创建号码包失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -259,7 +399,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false })
       return false
     } catch (error) {
-      log.error('更新号码包失败', error, 'AppStore')
+      logger.error('更新号码包失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -279,7 +419,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false })
       return false
     } catch (error) {
-      log.error('删除号码包失败', error, 'AppStore')
+      logger.error('删除号码包失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -297,7 +437,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         return null
       }
     } catch (error) {
-      log.error('文件上传失败', error, 'AppStore')
+      logger.error('文件上传失败', error, 'AppStore')
       set({ uploadProgress: 0 })
       return null
     }
@@ -322,7 +462,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ phoneRatings: ratings, loading: false })
       return true
     } catch (error) {
-      log.error('加载号码评级失败', error, 'AppStore')
+      logger.error('加载号码评级失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -342,7 +482,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false })
       return false
     } catch (error) {
-      log.error('创建号码评级失败', error, 'AppStore')
+      logger.error('创建号码评级失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -358,101 +498,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       score.phone_number === phoneNumber ? { ...score, ...updates } : score
     )
   })),
-  calculatePhoneScore: (phoneNumber) => {
-    const state = get()
-    const ratings = state.phoneRatings.filter(r => r.phone_number === phoneNumber)
-    
-    if (ratings.length < state.settings.minRatingCount) {
-      // 评级次数不足，更新状态为待评级
-      const existingScore = state.phoneScores.find(s => s.phone_number === phoneNumber)
-      if (existingScore) {
-        state.updatePhoneScore(phoneNumber, { 
-          status: 'pending',
-          rating_count: ratings.length 
-        })
-      }
-      return
-    }
-    
-    // 计算综合评分
-    let averageScore = 0
-    const algorithm = state.settings.scoringAlgorithm
-    
-    if (algorithm.type === 'simple') {
-      // 简单平均
-      averageScore = ratings.reduce((sum, r) => sum + r.rating_score, 0) / ratings.length
-    } else if (algorithm.type === 'weighted') {
-      // 加权平均（基于包规模）
-      let totalWeightedScore = 0
-      let totalWeight = 0
-      ratings.forEach(r => {
-        const weight = r.package_size / 10000
-        totalWeightedScore += r.rating_score * weight
-        totalWeight += weight
-      })
-      averageScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0
-    } else if (algorithm.type === 'timeDecay') {
-      // 时间衰减
-      const currentDate = new Date()
-      let totalWeightedScore = 0
-      let totalWeight = 0
-      ratings.forEach(r => {
-        const daysDiff = Math.floor((currentDate.getTime() - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24))
-        const timeWeight = Math.exp(-state.settings.timeDecayFactor * daysDiff)
-        totalWeightedScore += r.rating_score * timeWeight
-        totalWeight += timeWeight
-      })
-      averageScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0
-    }
-    
-    const finalGrade = get().getFinalGrade(averageScore)
-    const status = 'active' as const
-    
-    // 更新或添加评分记录
-    const existingScore = state.phoneScores.find(s => s.phone_number === phoneNumber)
-    if (existingScore) {
-      get().updatePhoneScore(phoneNumber, {
-        rating_count: ratings.length,
-        average_score: averageScore,
-        weighted_score: averageScore,
-        time_decay_score: averageScore,
-        final_grade: finalGrade,
-        status,
-        last_calculated: new Date().toISOString(),
-        algorithm_type: algorithm.type
-      })
-    } else {
-      set((state) => ({
-        phoneScores: [...state.phoneScores, {
-          id: Math.random().toString(36).substr(2, 9),
-          phone_number: phoneNumber,
-          country_code: ratings.length > 0 ? ratings[0].country_code : 'BR',
-          rating_count: ratings.length,
-          average_score: averageScore,
-          weighted_score: averageScore, // 使用平均分作为加权分
-          time_decay_score: averageScore, // 使用平均分作为时间衰减分
-          final_grade: finalGrade,
-          status: 'active',
-          algorithm_type: algorithm.type,
-          last_calculated: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          // 保留旧字段名以兼容
-          phoneNumber,
-          country: ratings.length > 0 ? ratings[0].country_code : 'BR',
-          ratingCount: ratings.length,
-          averageScore,
-          weightedScore: averageScore,
-          timeDecayScore: averageScore,
-          finalGrade,
-          algorithmType: algorithm.type,
-          lastCalculated: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }]
-      }))
-    }
-  },
+
   getPhonesByGrade: (grade) => {
     const state = get()
     return state.phoneScores.filter(score => score.final_grade === grade && score.status === 'active')
@@ -466,7 +512,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ phoneScores: scores, loading: false })
       return true
     } catch (error) {
-      log.error('加载号码评分失败', error, 'AppStore')
+      logger.error('加载号码评分失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -488,7 +534,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false })
       return false
     } catch (error) {
-      log.error('更新号码评分失败', error, 'AppStore')
+      logger.error('更新号码评分失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -520,7 +566,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false })
       return false
     } catch (error) {
-      log.error('保存号码评分失败', error, 'AppStore')
+      logger.error('保存号码评分失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -541,12 +587,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ reports: response.data, loading: false })
         return true
       } else {
-        log.error('加载报告失败', response.error, 'AppStore')
+        logger.error('加载报告失败', response.error, 'AppStore')
         set({ loading: false })
         return false
       }
     } catch (error) {
-      log.error('加载报告失败', error, 'AppStore')
+      logger.error('加载报告失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -566,7 +612,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false })
       return false
     } catch (error) {
-      log.error('生成报告失败', error, 'AppStore')
+      logger.error('生成报告失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -586,7 +632,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false })
       return false
     } catch (error) {
-      log.error('删除报告失败', error, 'AppStore')
+      logger.error('删除报告失败', error, 'AppStore')
       set({ loading: false })
       return false
     }
@@ -600,7 +646,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return null
     } catch (error) {
-      log.error('下载报告失败', error, 'AppStore')
+      logger.error('下载报告失败', error, 'AppStore')
       return null
     }
   },
@@ -609,7 +655,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       return await ReportService.getReportStats()
     } catch (error) {
-      log.error('获取报告统计失败', error, 'AppStore')
+      logger.error('获取报告统计失败', error, 'AppStore')
       return null
     }
   },
@@ -624,114 +670,552 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       set({ loading: true })
       const settings = await SettingsService.getSystemSettings()
-      if (settings) {
-        set({ settings, loading: false })
-        return true
-      }
-      set({ loading: false })
-      return false
+      set({ settings, loading: false })
+      return settings
     } catch (error) {
-      log.error('加载系统设置失败', error, 'AppStore')
+      logger.error('加载系统设置失败', error, 'Store')
       set({ loading: false })
-      return false
+      throw error
     }
   },
-  
-  saveSystemSettings: async (settings) => {
+
+  saveSystemSettings: async (settings: Partial<SystemSettings>) => {
     try {
       set({ loading: true })
       const updatedSettings = await SettingsService.updateSystemSettings(settings)
-      if (updatedSettings) {
-        set({ settings: updatedSettings, loading: false })
-        return true
-      }
-      set({ loading: false })
-      return false
+      set({ settings: updatedSettings, loading: false })
+      return updatedSettings
     } catch (error) {
-      log.error('保存系统设置失败', error, 'AppStore')
+      logger.error('保存系统设置失败', error, 'Store')
       set({ loading: false })
-      return false
+      throw error
     }
   },
-  
+
   resetSystemSettings: async () => {
     try {
       set({ loading: true })
       const defaultSettings = await SettingsService.resetSystemSettings()
-      if (defaultSettings) {
-        set({ settings: defaultSettings, loading: false })
-        return true
-      }
-      set({ loading: false })
-      return false
+      set({ settings: defaultSettings, loading: false })
+      return defaultSettings
     } catch (error) {
-      log.error('重置系统设置失败', error, 'AppStore')
+      logger.error('重置系统设置失败', error, 'Store')
       set({ loading: false })
-      return false
+      throw error
     }
   },
-  
-  updateCategorySettings: async (category, categorySettings) => {
+
+  updateCategorySettings: async (category: string, categorySettings: Record<string, any>) => {
     try {
       set({ loading: true })
       const success = await SettingsService.updateCategorySettings(category, categorySettings)
       if (success) {
-        // 重新加载设置以获取最新数据
+        // 重新获取完整的设置
         const updatedSettings = await SettingsService.getSystemSettings()
         if (updatedSettings) {
           set({ settings: updatedSettings, loading: false })
-        } else {
-          set({ loading: false })
+          return updatedSettings
         }
-        return success
       }
       set({ loading: false })
-      return false
+      return null
     } catch (error) {
-      log.error('更新分类设置失败', error, 'AppStore')
+      logger.error('更新分类设置失败', error, 'AppStore')
       set({ loading: false })
-      return false
+      return null
     }
   },
-  
-  // 操作方法 - UI状态
-  setLoading: (loading) => set({ loading }),
-  setSelectedPackageId: (id) => set({ selectedPackageId: id }),
-  setUploadProgress: (progress) => set({ uploadProgress: progress }),
+
+  // 评级分数映射相关方法
+  loadRatingScoreMapping: async () => {
+    try {
+      const scoreMap = await configService.getRatingScoreMap()
+      // 转换为 Record<string, number> 格式
+      return {
+        'SS': scoreMap.SS,
+        'S': scoreMap.S,
+        'A': scoreMap.A,
+        'B': scoreMap.B,
+        'C': scoreMap.C,
+        'D': scoreMap.D
+      }
+    } catch (error) {
+      logger.error('加载评级分数映射失败', error, 'Store')
+      // 返回默认映射
+      return {
+        'SS': 100, 'S': 90, 'A': 80, 'B': 70, 'C': 60, 'D': 50
+      }
+    }
+  },
+
+  updateRatingScoreMapping: async (scoreMap: Record<string, number>) => {
+    try {
+      await configService.updateConfig('rating_score_map', scoreMap)
+      return scoreMap
+    } catch (error) {
+      logger.error('更新评级分数映射失败', error, 'Store')
+      throw error
+    }
+  },
+
+  resetRatingScoreMappingToDefault: async () => {
+    try {
+      const defaultScoreMap = {
+        'SS': 100, 'S': 90, 'A': 80, 'B': 70, 'C': 60, 'D': 50
+      }
+      await configService.updateConfig('rating_score_map', defaultScoreMap)
+      return defaultScoreMap
+    } catch (error) {
+      logger.error('重置评级分数映射失败', error, 'Store')
+      throw error
+    }
+  },
+
+  validateRatingScoreMapping: (scoreMap: Record<string, number>) => {
+    const errors: Record<string, string> = {}
+    const requiredRatings = ['SS', 'S', 'A', 'B', 'C', 'D']
+    
+    // 检查必需的评级是否存在
+    for (const rating of requiredRatings) {
+      if (!(rating in scoreMap)) {
+        errors[rating] = `缺少评级 ${rating} 的分数配置`
+      } else if (typeof scoreMap[rating] !== 'number' || scoreMap[rating] < 0 || scoreMap[rating] > 100) {
+        errors[rating] = `评级 ${rating} 的分数必须是 0-100 之间的数字`
+      }
+    }
+    
+    // 检查分数是否递减
+    const ratings = ['SS', 'S', 'A', 'B', 'C', 'D']
+    for (let i = 0; i < ratings.length - 1; i++) {
+      const current = ratings[i]
+      const next = ratings[i + 1]
+      if (scoreMap[current] && scoreMap[next] && scoreMap[current] <= scoreMap[next]) {
+        errors[current] = `评级 ${current} 的分数应该高于 ${next}`
+      }
+    }
+    
+    return {
+      isValid: Object.keys(errors).length === 0,
+      errors
+    }
+  },
+
+  // UI状态操作方法
+  setLoading: (loading: boolean) => set({ loading }),
+  setSelectedPackageId: (id: string | null) => set({ selectedPackageId: id }),
+  setUploadProgress: (progress: number) => set({ uploadProgress: progress }),
   
   // 业务逻辑方法
-  calculateConversionRate: (firstChargeCount, phoneCount) => {
+  calculateConversionRate: (firstChargeCount: number, phoneCount: number) => {
     if (phoneCount === 0) return 0
-    return (firstChargeCount / phoneCount) * 10000
+    return (firstChargeCount / phoneCount) * 100
   },
   
-  getPackageGrade: (conversionRate) => {
-    const state = get()
-    const thresholds = state.settings.packageGradeThresholds
-    
-    // 适应新的阈值结构 {A: {min: 90, max: 100}, ...}
-    if (conversionRate >= thresholds.A.min) return 'A'
-    if (conversionRate >= thresholds.B.min) return 'B'
-    if (conversionRate >= thresholds.C.min) return 'C'
-    if (conversionRate >= thresholds.D.min) return 'D'
+  // 业务逻辑函数 - 统一使用配置服务
+  getPackageGrade: async (conversionRate: number): Promise<'A' | 'B' | 'C' | 'D' | 'E'> => {
+    try {
+      const thresholds = await configService.getPackageGradeThresholds()
+      
+      // 按照从高到低的顺序检查阈值
+      if (conversionRate >= thresholds.A.min) return 'A'
+      if (conversionRate >= thresholds.B.min) return 'B'
+      if (conversionRate >= thresholds.C.min) return 'C'
+      if (conversionRate >= thresholds.D.min) return 'D'
+      return 'E'
+    } catch (error) {
+      logger.error('获取号码包评级失败', error)
+      // 使用默认阈值作为后备
+      if (conversionRate >= 50) return 'A'
+      if (conversionRate >= 30) return 'B'
+      if (conversionRate >= 20) return 'C'
+      if (conversionRate >= 16) return 'D'
+      return 'E'
+    }
+  },
+  
+  // 保留同步版本以兼容现有代码，但标记为已弃用
+  getPackageGradeSync: (conversionRate: number) => {
+    // 使用默认阈值进行同步计算
+    if (conversionRate >= 50) return 'A'
+    if (conversionRate >= 30) return 'B'
+    if (conversionRate >= 20) return 'C'
+    if (conversionRate >= 16) return 'D'
     return 'E'
   },
   
-  getRatingScore: (rating) => {
-    const state = get()
-    return state.settings.ratingScoreMap[rating] || 0
+  getPackageGradeAsync: async (conversionRate: number): Promise<'A' | 'B' | 'C' | 'D' | 'E'> => {
+    // 重定向到主要的异步方法
+    return get().getPackageGrade(conversionRate)
   },
   
-  getFinalGrade: (averageScore) => {
-    const state = get()
-    const gradeConfig = state.settings.finalGradeConfig
-    
-    for (const grade of gradeConfig) {
-      if (averageScore >= grade.minScore && averageScore <= grade.maxScore) {
-        return grade.name as 'A' | 'B' | 'C' | 'D' | 'E'
+  getRatingScore: async (rating: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'): Promise<number> => {
+    try {
+      const scoreMap = await configService.getRatingScoreMap()
+      return scoreMap[rating] || 0
+    } catch (error) {
+      logger.error('获取评级分数失败', error)
+      // 使用默认分数映射作为后备
+      const defaultScores: Record<string, number> = {
+        'SS': 100, 'S': 90, 'A': 80, 'B': 70, 'C': 60, 'D': 50
+      }
+      return defaultScores[rating] || 0
+    }
+  },
+
+  // 保留同步版本以兼容现有代码，但标记为已弃用
+  getRatingScoreSync: (rating: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D') => {
+    // 使用默认分数映射进行同步计算
+    const defaultScores: Record<string, number> = {
+      'SS': 100, 'S': 90, 'A': 80, 'B': 70, 'C': 60, 'D': 50
+    }
+    return defaultScores[rating] || 0
+  },
+
+  getRatingScoreAsync: async (rating: 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'): Promise<number> => {
+    // 重定向到主要的异步方法
+    return get().getRatingScore(rating)
+  },
+  
+  getFinalGrade: async (averageScore: number): Promise<'A' | 'B' | 'C' | 'D' | 'E'> => {
+    try {
+      const gradeConfig = await configService.getFinalGradeConfig()
+      
+      for (const grade of gradeConfig) {
+        if (averageScore >= grade.minScore && averageScore <= grade.maxScore) {
+          return grade.name as 'A' | 'B' | 'C' | 'D' | 'E'
+        }
+      }
+      return 'E'
+    } catch (error) {
+      logger.error('获取最终等级失败', error)
+      // 使用默认等级配置作为后备
+      if (averageScore >= 90) return 'A'
+      if (averageScore >= 80) return 'B'
+      if (averageScore >= 70) return 'C'
+      if (averageScore >= 60) return 'D'
+      return 'E'
+    }
+  },
+
+  // 保留同步版本以兼容现有代码，但标记为已弃用
+  getFinalGradeSync: (averageScore: number) => {
+    // 使用默认等级配置进行同步计算
+    if (averageScore >= 90) return 'A'
+    if (averageScore >= 80) return 'B'
+    if (averageScore >= 70) return 'C'
+    if (averageScore >= 60) return 'D'
+    return 'E'
+  },
+
+  getFinalGradeAsync: async (averageScore: number): Promise<'A' | 'B' | 'C' | 'D' | 'E'> => {
+    // 重定向到主要的异步方法
+    return get().getFinalGrade(averageScore)
+  },
+
+  calculatePhoneScore: async (phoneNumber: string, packageId?: string): Promise<number> => {
+    try {
+      // 使用防误杀服务检查是否应该计算评分
+      const antiFalsePositiveResult = await antiFalsePositiveService.checkAntiFalsePositive(phoneNumber, packageId)
+      
+      if (!antiFalsePositiveResult.shouldCalculateScore) {
+        logger.info(`号码 ${phoneNumber} 防误杀检查未通过: ${antiFalsePositiveResult.reason}`)
+        return 0
+      }
+
+      // 获取算法配置
+      const algorithmConfig = await configService.getScoringAlgorithmConfig()
+  
+      // 获取该号码的评级历史
+      const { data: ratingHistory, error } = await supabase
+        .from('phone_ratings')
+        .select('*')
+        .eq('phone_number', phoneNumber)
+        .order('created_at', { ascending: false })
+  
+      if (error) {
+        logger.error('获取号码评级历史失败', error)
+        return 0
+      }
+  
+      if (!ratingHistory || ratingHistory.length === 0) {
+        return 0 // 没有评级历史
+      }
+  
+      // 根据算法类型计算分数
+      let finalScore = 0
+  
+      switch (algorithmConfig.type) {
+        case 'simple':
+          // 简单平均
+          finalScore = ratingHistory.reduce((sum, r) => sum + r.rating_score, 0) / ratingHistory.length
+          break
+  
+        case 'weighted':
+          // 加权平均（最近的评级权重更高）
+          const weights = algorithmConfig.weights || { recent: 0.7, historical: 0.3 }
+          const recentCount = Math.ceil(ratingHistory.length * 0.3) // 最近30%的评级
+          
+          const recentRatings = ratingHistory.slice(0, recentCount)
+          const historicalRatings = ratingHistory.slice(recentCount)
+          
+          const recentAvg = recentRatings.reduce((sum, r) => sum + r.rating_score, 0) / recentRatings.length
+          const historicalAvg = historicalRatings.length > 0 
+            ? historicalRatings.reduce((sum, r) => sum + r.rating_score, 0) / historicalRatings.length 
+            : recentAvg
+          
+          finalScore = recentAvg * weights.recent + historicalAvg * weights.historical
+          break
+  
+        case 'time_decay':
+          // 时间衰减算法
+          const decayFactor = algorithmConfig.timeDecayFactor || 0.1
+          const now = new Date()
+          let totalWeight = 0
+          let weightedSum = 0
+          
+          ratingHistory.forEach(rating => {
+            const daysDiff = Math.floor((now.getTime() - new Date(rating.created_at).getTime()) / (1000 * 60 * 60 * 24))
+            const weight = Math.exp(-decayFactor * daysDiff)
+            weightedSum += rating.rating_score * weight
+            totalWeight += weight
+          })
+          
+          finalScore = totalWeight > 0 ? weightedSum / totalWeight : 0
+          break
+  
+        default:
+          // 默认使用简单平均
+          finalScore = ratingHistory.reduce((sum, r) => sum + r.rating_score, 0) / ratingHistory.length
+      }
+
+      logger.info(`号码 ${phoneNumber} 评分计算完成`, {
+        finalScore,
+        ratingCount: ratingHistory.length,
+        packageCount: antiFalsePositiveResult.packageCount,
+        algorithm: algorithmConfig.type
+      })
+  
+      return Math.round(finalScore * 100) / 100 // 保留两位小数
+    } catch (error) {
+      logger.error('计算号码评分失败', error)
+      return 0
+    }
+  },
+
+  // 配置验证相关方法
+  validateAllConfigs: async () => {
+    try {
+      return await configService.validateAllConfigs()
+    } catch (error) {
+      logger.error('验证所有配置失败', error, 'AppStore')
+      return {
+        overall: {
+          isValid: false,
+          errors: ['配置验证失败'],
+          warnings: []
+        },
+        details: {}
       }
     }
-    return 'E'
+  },
+
+  getConfigStatus: async () => {
+    try {
+      return await configService.getConfigStatus()
+    } catch (error) {
+      logger.error('获取配置状态失败', error, 'AppStore')
+      return {
+        cacheStatus: {},
+        lastUpdated: {},
+        validation: {
+          overall: {
+            isValid: false,
+            errors: ['获取配置状态失败'],
+            warnings: []
+          },
+          details: {}
+        }
+      }
+    }
+  },
+
+  reloadConfigs: async () => {
+    try {
+      set({ loading: true })
+      await configService.reloadConfigs()
+      logger.info('配置重新加载成功', {}, 'AppStore')
+      set({ loading: false })
+    } catch (error) {
+      logger.error('重新加载配置失败', error, 'AppStore')
+      set({ loading: false })
+      throw error
+    }
+  },
+
+  // 配置热更新相关方法
+  startConfigHotReload: async () => {
+    try {
+      await hotReloadManager.start()
+      logger.info('配置热更新已启动', {}, 'AppStore')
+    } catch (error) {
+      logger.error('启动配置热更新失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  stopConfigHotReload: async () => {
+    try {
+      await hotReloadManager.stop()
+      logger.info('配置热更新已停止', {}, 'AppStore')
+    } catch (error) {
+      logger.error('停止配置热更新失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  getHotReloadStatus: () => {
+    return hotReloadManager.getStatus()
+  },
+
+  triggerManualRecalculation: async (configTypes) => {
+    try {
+      set({ loading: true })
+      
+      if (!configTypes || configTypes.length === 0) {
+        // 默认触发所有类型的重算
+        await hotReloadManager.triggerRecalculation('all')
+      } else {
+        // 逐个触发每种类型的重算
+        for (const type of configTypes) {
+          await hotReloadManager.triggerRecalculation(type)
+        }
+      }
+      
+      logger.info('手动重算触发成功', { configTypes }, 'AppStore')
+      set({ loading: false })
+    } catch (error) {
+      logger.error('手动重算触发失败', error, 'AppStore')
+      set({ loading: false })
+      throw error
+    }
+  },
+
+  // 防误杀机制相关方法
+  checkAntiFalsePositive: async (phoneNumber: string, packageId?: string) => {
+    try {
+      return await antiFalsePositiveService.checkAntiFalsePositive(phoneNumber, packageId)
+    } catch (error) {
+      logger.error('防误杀检查失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  batchCheckAntiFalsePositive: async (phoneNumbers: string[], packageId?: string) => {
+    try {
+      return await antiFalsePositiveService.batchCheckAntiFalsePositive(phoneNumbers, packageId)
+    } catch (error) {
+      logger.error('批量防误杀检查失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  getAntiFalsePositiveStats: async (packageId?: string) => {
+    try {
+      return await antiFalsePositiveService.getAntiFalsePositiveStats(packageId)
+    } catch (error) {
+      logger.error('获取防误杀统计失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  validateAntiFalsePositiveConfig: (config: { threshold: number; enabled: boolean; description: string }) => {
+    try {
+      return antiFalsePositiveService.validateAntiFalsePositiveConfig(config)
+    } catch (error) {
+      logger.error('验证防误杀配置失败', error, 'AppStore')
+      return {
+        isValid: false,
+        errors: ['验证防误杀配置失败'],
+        warnings: []
+      }
+    }
+  },
+
+  // 综合评分计算相关方法
+  calculateComprehensiveScore: async (phoneNumber: string, packageId?: string): Promise<ComprehensiveScoringResult> => {
+    try {
+      return await comprehensiveScoringService.calculateComprehensiveScore(phoneNumber, packageId)
+    } catch (error) {
+      logger.error('计算综合评分失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  batchCalculateComprehensiveScore: async (request: BatchScoringRequest) => {
+    try {
+      set({ loading: true })
+      const result = await comprehensiveScoringService.batchCalculateComprehensiveScore(request)
+      set({ loading: false })
+      return result
+    } catch (error) {
+      logger.error('批量计算综合评分失败', error, 'AppStore')
+      set({ loading: false })
+      throw error
+    }
+  },
+
+  getComprehensiveScoringStats: async (packageId?: string) => {
+    try {
+      return await comprehensiveScoringService.getComprehensiveScoringStats(packageId)
+    } catch (error) {
+      logger.error('获取综合评分统计失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  // 最终等级评定相关方法
+  assessFinalGrade: async (phoneNumber: string, packageId?: string, updateDatabase: boolean = false): Promise<FinalGradeAssessmentResult> => {
+    try {
+      return await finalGradeAssessmentService.assessFinalGrade(phoneNumber, packageId, updateDatabase)
+    } catch (error) {
+      logger.error('评定最终等级失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  batchAssessFinalGrade: async (request: BatchGradeAssessmentRequest) => {
+    try {
+      set({ loading: true })
+      const result = await finalGradeAssessmentService.batchAssessFinalGrade(request)
+      set({ loading: false })
+      return result
+    } catch (error) {
+      logger.error('批量评定最终等级失败', error, 'AppStore')
+      set({ loading: false })
+      throw error
+    }
+  },
+
+  getGradeStatistics: async (packageId?: string) => {
+    try {
+      return await finalGradeAssessmentService.getGradeStatistics(packageId)
+    } catch (error) {
+      logger.error('获取等级统计失败', error, 'AppStore')
+      throw error
+    }
+  },
+
+  reassessAllGrades: async (packageId?: string) => {
+    try {
+      set({ loading: true })
+      const result = await finalGradeAssessmentService.reassessAllGrades(packageId)
+      set({ loading: false })
+      return result
+    } catch (error) {
+      logger.error('重新评定所有等级失败', error, 'AppStore')
+      set({ loading: false })
+      throw error
+    }
   }
 }))
 
@@ -799,5 +1283,33 @@ export const useSettingsActions = () => useAppStore((state) => ({
   loadSystemSettings: state.loadSystemSettings,
   saveSystemSettings: state.saveSystemSettings,
   resetSystemSettings: state.resetSystemSettings,
-  updateCategorySettings: state.updateCategorySettings
+  updateCategorySettings: state.updateCategorySettings,
+  // 评级分数映射相关方法
+  loadRatingScoreMapping: state.loadRatingScoreMapping,
+  updateRatingScoreMapping: state.updateRatingScoreMapping,
+  resetRatingScoreMappingToDefault: state.resetRatingScoreMappingToDefault,
+  validateRatingScoreMapping: state.validateRatingScoreMapping,
+  // 配置验证相关方法
+  validateAllConfigs: state.validateAllConfigs,
+  getConfigStatus: state.getConfigStatus,
+  reloadConfigs: state.reloadConfigs,
+  // 配置热更新相关方法
+  startConfigHotReload: state.startConfigHotReload,
+  stopConfigHotReload: state.stopConfigHotReload,
+  getHotReloadStatus: state.getHotReloadStatus,
+  triggerManualRecalculation: state.triggerManualRecalculation,
+  // 防误杀机制相关方法
+  checkAntiFalsePositive: state.checkAntiFalsePositive,
+  batchCheckAntiFalsePositive: state.batchCheckAntiFalsePositive,
+  getAntiFalsePositiveStats: state.getAntiFalsePositiveStats,
+  validateAntiFalsePositiveConfig: state.validateAntiFalsePositiveConfig,
+  // 综合评分计算相关方法
+  calculateComprehensiveScore: state.calculateComprehensiveScore,
+  batchCalculateComprehensiveScore: state.batchCalculateComprehensiveScore,
+  getComprehensiveScoringStats: state.getComprehensiveScoringStats,
+  // 最终等级评定相关方法
+  assessFinalGrade: state.assessFinalGrade,
+  batchAssessFinalGrade: state.batchAssessFinalGrade,
+  getGradeStatistics: state.getGradeStatistics,
+  reassessAllGrades: state.reassessAllGrades
 }))

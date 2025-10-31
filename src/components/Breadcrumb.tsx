@@ -28,7 +28,7 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({ items, className = '' }) => {
       'packages': '包管理',
       'analysis': '数据分析',
       'phones': '号码管理',
-      'reports': '报告中心',
+  
       'settings': '系统设置'
     }
 

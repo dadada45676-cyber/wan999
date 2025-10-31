@@ -1,17 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { 
-  Search, Filter, Download, Phone, Star, TrendingUp, Eye, Edit, Trash2, 
-  AlertCircle, CheckCircle, Clock, History, FileText, BarChart3, 
-  Settings, RefreshCw, Users, Calendar, Package, Zap, Shield,
-  ChevronLeft, ChevronRight, X, Calculator, Activity, MoreVertical, Globe
+  Search, Phone, Star, TrendingUp, AlertCircle, Clock, Package, X, ChevronRight, MoreVertical, ChevronLeft, Download, Activity, CheckCircle, Eye, Edit, Filter, Calculator, BarChart3, Shield
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppStore } from '../store'
 import { useCountry } from '../store/country'
+import { logger } from '../utils/logger'
 
 import Breadcrumb from '../components/Breadcrumb'
 import CountrySelector from '../components/CountrySelector'
 import Button from '../components/Button'
+import { RATING_GRADES, type RatingGrade } from '../constants'
 
 // 号码状态类型定义
 type PhoneStatus = 'pending' | 'rating' | 'active'
@@ -19,6 +18,8 @@ type PhoneGrade = 'A' | 'B' | 'C' | 'D' | 'E'
 type CalculationAlgorithm = 'simple' | 'weighted' | 'timeDecay'
 type ExportFormat = 'csv' | 'excel'
 type ExportType = 'selected' | 'all' | 'grade'
+
+// 评级等级类型已从constants导入
 
 // 号码数据接口
 interface PhoneData {
@@ -42,11 +43,16 @@ const PhoneManagement: React.FC = () => {
     packages,
     phoneRatings,
     phoneScores,
+    settings,
     addPackage,
     addPhoneRating,
     addPhoneScore,
     getRatingScore,
-    getFinalGrade
+    getFinalGrade,
+    createPhoneRating,
+    checkAntiFalsePositive,
+    calculateComprehensiveScore,
+    assessFinalGrade
   } = useAppStore()
   
   const { selectedCountry } = useCountry()
@@ -73,8 +79,24 @@ const PhoneManagement: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
 
+  // 评级相关状态
+  const [showRatingDialog, setShowRatingDialog] = useState(false)
+  const [ratingPhoneNumber, setRatingPhoneNumber] = useState<string>('')
+  const [selectedRating, setSelectedRating] = useState<RatingGrade>('A')
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false)
+
   // 按需生成数据的缓存
   const [searchDataCache, setSearchDataCache] = useState<Map<string, any>>(new Map())
+  
+  // 评级分数映射缓存
+  const [ratingScoreMap, setRatingScoreMap] = useState<Record<RatingGrade, number>>({
+    'SS': 100,
+    'S': 85,
+    'A': 70,
+    'B': 55,
+    'C': 40,
+    'D': 25
+  })
 
   // 根据搜索关键词生成对应的号码数据
   const generateDataForSearch = useCallback((searchKey: string) => {
@@ -103,6 +125,116 @@ const PhoneManagement: React.FC = () => {
     }
   }, [searchTerm, generateDataForSearch])
 
+  // 加载评级分数映射
+  useEffect(() => {
+    const loadRatingScores = async () => {
+      try {
+        const scores = { ...ratingScoreMap } // 从默认值开始
+        const grades: RatingGrade[] = ['SS', 'S', 'A', 'B', 'C', 'D']
+        
+        for (const grade of grades) {
+          scores[grade] = await getRatingScore(grade)
+        }
+        
+        setRatingScoreMap(scores)
+      } catch (error) {
+        console.error('加载评级分数映射失败，使用默认值:', error)
+        // 保持默认值
+      }
+    }
+    
+    loadRatingScores()
+  }, [getRatingScore])
+
+  // 评级提交处理
+  const handleRatingSubmit = useCallback(async () => {
+    if (!ratingPhoneNumber || !selectedRating) {
+      toast.error('请选择评级等级')
+      return
+    }
+
+    setIsSubmittingRating(true)
+    
+    try {
+      // 从packages中查找包含该号码的包
+      const targetPackage = packages.find(pkg => 
+        pkg.phoneNumbers && pkg.phoneNumbers.includes(ratingPhoneNumber)
+      )
+      
+      // 获取评级分数（异步）
+      const ratingScore = await getRatingScore(selectedRating)
+      
+      // 创建评级记录
+      const ratingData = {
+        phone_number: ratingPhoneNumber,
+        package_id: targetPackage?.id || '',
+        country_code: selectedCountry.code,
+        rating: selectedRating,
+        rating_score: ratingScore,
+        package_size: targetPackage?.phoneCount || 0,
+        conversion_rate: targetPackage?.conversionRate || 0
+      }
+
+      const success = await createPhoneRating(ratingData)
+      
+      if (success) {
+        toast.success(`号码 ${ratingPhoneNumber} 评级成功！`)
+        
+        // 评级成功后，自动触发综合评分计算和最终等级评定
+        try {
+          // 检查防误杀机制
+          const antiFalsePositiveResult = await checkAntiFalsePositive(ratingPhoneNumber, targetPackage?.id)
+          
+          if (!antiFalsePositiveResult.shouldCalculateScore) {
+            toast.warning(`号码 ${ratingPhoneNumber} 触发防误杀保护: ${antiFalsePositiveResult.reason}`)
+          } else {
+            // 计算综合评分
+            const scoringResult = await calculateComprehensiveScore(ratingPhoneNumber, targetPackage?.id)
+            
+            if (scoringResult.comprehensiveScore > 0) {
+              // 评定最终等级
+              const gradeResult = await assessFinalGrade(ratingPhoneNumber, targetPackage?.id, true)
+              
+              toast.success(`号码 ${ratingPhoneNumber} 综合评分: ${scoringResult.comprehensiveScore.toFixed(2)}, 最终等级: ${gradeResult.finalGrade}`)
+            }
+          }
+        } catch (error) {
+          console.error('自动评分计算失败:', error)
+          // 不影响评级提交的成功状态
+        }
+        
+        // 关闭对话框
+        setShowRatingDialog(false)
+        setRatingPhoneNumber('')
+        setSelectedRating('A')
+        
+        // 重新加载数据以更新评级进度
+        // 这里可以选择性地重新加载数据或者直接更新本地状态
+      } else {
+        toast.error('评级提交失败，请重试')
+      }
+    } catch (error) {
+      // 评级提交错误已处理
+      toast.error('评级提交失败，请重试')
+    } finally {
+      setIsSubmittingRating(false)
+    }
+  }, [ratingPhoneNumber, selectedRating, getRatingScore, createPhoneRating, packages, checkAntiFalsePositive, calculateComprehensiveScore, assessFinalGrade])
+
+  // 打开评级对话框
+  const handleOpenRatingDialog = useCallback((phoneNumber: string) => {
+    setRatingPhoneNumber(phoneNumber)
+    setSelectedRating('A')
+    setShowRatingDialog(true)
+  }, [])
+
+  // 关闭评级对话框
+  const handleCloseRatingDialog = useCallback(() => {
+    setShowRatingDialog(false)
+    setRatingPhoneNumber('')
+    setSelectedRating('A')
+  }, [])
+
   // 生成号码数据（只有在搜索时才生成）
   const phoneData = useMemo(() => {
     // 如果没有搜索内容，返回空数组
@@ -120,10 +252,19 @@ const PhoneManagement: React.FC = () => {
         
         const ratingCount = phoneRatingList.length
         const averageScore = phoneScore ? phoneScore.averageScore : 0
-        const finalGrade = phoneScore ? phoneScore.finalGrade : getFinalGrade(averageScore)
+        // 使用已存储的finalGrade，如果没有则使用默认逻辑
+        let finalGrade: PhoneGrade = phoneScore ? phoneScore.finalGrade : 'E'
+        if (!phoneScore) {
+          // 使用简单的默认逻辑，避免异步调用
+          if (averageScore >= 80) finalGrade = 'A'
+          else if (averageScore >= 60) finalGrade = 'B'
+          else if (averageScore >= 40) finalGrade = 'C'
+          else if (averageScore >= 20) finalGrade = 'D'
+          else finalGrade = 'E'
+        }
         
         let status: PhoneStatus = 'pending'
-        if (ratingCount >= 3) {
+        if (ratingCount >= settings.minRatingCount) {
           status = 'active'
         } else if (ratingCount > 0) {
           status = 'rating'
@@ -148,7 +289,7 @@ const PhoneManagement: React.FC = () => {
     })
     
     return Array.from(phoneMap.values())
-  }, [packages, phoneRatings, phoneScores, getFinalGrade, searchTerm])
+  }, [packages, phoneRatings, phoneScores, getFinalGrade, searchTerm, settings.minRatingCount])
 
   // 筛选数据
   const filteredData = useMemo(() => {
@@ -235,14 +376,21 @@ const PhoneManagement: React.FC = () => {
       
       const totalPhones = phonesToCalculate.length
       
-      // 真实的批量计算处理
+      // 使用配置驱动的批量计算处理
       for (let i = 0; i < phonesToCalculate.length; i++) {
         const phone = phonesToCalculate[i]
         
-        // 执行真实的评分计算逻辑
-        // 这里可以调用实际的评分算法，比如基于历史评级数据重新计算平均分
-        const newScore = calculatePhoneScore(phone)
-        const newGrade = calculatePhoneGrade(newScore)
+        // 使用配置驱动的评分计算逻辑
+        const baseScore = calculatePhoneScore(phone)
+        
+        // 应用防误杀机制检查
+        const antiFalsePositiveResult = await checkAntiFalsePositive(phone.phoneNumber, phone.packageId)
+        
+        // 计算综合评分
+        const comprehensiveScore = await calculateComprehensiveScore(phone.phoneNumber, phone.packageId)
+        
+        // 评估最终等级
+        const finalGrade = await assessFinalGrade(phone.phoneNumber, phone.packageId, true)
         
         // 更新手机评分数据（这里应该调用实际的更新API）
         // 为了演示，我们只更新进度
@@ -265,7 +413,7 @@ const PhoneManagement: React.FC = () => {
       setCalculationProgress(0)
       setSelectedPhones([])
     }
-  }, [selectedPhones, phoneData])
+  }, [selectedPhones, phoneData, checkAntiFalsePositive, calculateComprehensiveScore, assessFinalGrade])
 
   // 计算单个号码评分的辅助函数
   const calculatePhoneScore = (phone: PhoneData): number => {
@@ -279,12 +427,18 @@ const PhoneManagement: React.FC = () => {
   }
 
   // 计算号码等级的辅助函数
-  const calculatePhoneGrade = (score: number): PhoneGrade => {
-    if (score >= 90) return 'A'
-    if (score >= 80) return 'B'
-    if (score >= 70) return 'C'
-    if (score >= 60) return 'D'
-    return 'E'
+  const calculatePhoneGrade = async (score: number): Promise<PhoneGrade> => {
+    try {
+      return await getFinalGrade(score)
+    } catch (error) {
+      logger.error('获取最终等级失败，使用默认逻辑', error)
+      // 降级到默认逻辑
+      if (score >= 80) return 'A'
+      if (score >= 60) return 'B'
+      if (score >= 40) return 'C'
+      if (score >= 20) return 'D'
+      return 'E'
+    }
   }
 
   // 导出工具函数
@@ -1073,7 +1227,16 @@ const PhoneManagement: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
-                        {phone.ratingCount}
+                        <div className="flex items-center space-x-1">
+                          <span className={`font-medium ${phone.ratingCount >= settings.minRatingCount ? 'text-green-600' : 'text-orange-600'}`}>
+                            {phone.ratingCount}
+                          </span>
+                          <span className="text-gray-400">/</span>
+                          <span className="text-gray-500">{settings.minRatingCount}</span>
+                          {phone.ratingCount >= settings.minRatingCount && (
+                            <CheckCircle className="w-3 h-3 text-green-500 ml-1" />
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-2">
@@ -1093,7 +1256,9 @@ const PhoneManagement: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             icon={Star}
+                            onClick={() => handleOpenRatingDialog(phone.phoneNumber)}
                             className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50"
+                            title="为此号码评级"
                           />
                           <div className="relative">
                             <Button
@@ -1161,6 +1326,89 @@ const PhoneManagement: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* 评级对话框 */}
+      {showRatingDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">号码评级</h3>
+              <button
+                onClick={handleCloseRatingDialog}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <div className="flex items-center mb-4">
+                <div className="p-3 bg-indigo-100 rounded-lg mr-3">
+                  <Phone className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-gray-900">号码</div>
+                  <div className="text-lg font-semibold text-gray-700">{ratingPhoneNumber}</div>
+                </div>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  请选择评级等级
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {RATING_GRADES.map((grade) => (
+                    <button
+                      key={grade}
+                      onClick={() => setSelectedRating(grade)}
+                      className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+                        selectedRating === grade
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                      }`}
+                    >
+                      <div className="text-lg font-bold">{grade}</div>
+                      <div className="text-xs text-gray-500">{ratingScoreMap[grade]}分</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
+                <div className="flex items-center mb-1">
+                  <AlertCircle className="w-4 h-4 text-blue-500 mr-2" />
+                  <span className="font-medium">反误判机制说明</span>
+                </div>
+                <p>
+                  号码需要至少 <span className="font-medium text-indigo-600">{settings.minRatingCount}</span> 次评级才能参与综合评分计算。
+                  当前号码已评级 <span className="font-medium text-orange-600">
+                    {phoneData.find(p => p.phoneNumber === ratingPhoneNumber)?.ratingCount || 0}
+                  </span> 次。
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex space-x-3">
+              <Button
+                variant="secondary"
+                onClick={handleCloseRatingDialog}
+                className="flex-1"
+                disabled={isSubmittingRating}
+              >
+                取消
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleRatingSubmit}
+                className="flex-1"
+                loading={isSubmittingRating}
+              >
+                提交评级
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

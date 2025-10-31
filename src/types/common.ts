@@ -186,3 +186,55 @@ export interface SearchParams extends PaginationParams {
   keyword?: string;
   filters?: FilterOptions;
 }
+
+// ==================== 防误杀机制相关类型定义 ====================
+
+// 防误杀配置接口
+export interface AntiFalsePositiveConfig extends BaseEntity {
+  threshold: number; // 评级阈值（1-10次）
+  enabled: boolean; // 是否启用防误杀机制
+}
+
+// 号码评级历史接口
+export interface PhoneRatingHistory extends BaseEntity {
+  phoneNumber: string;
+  packageId: string;
+  ratingScore: number;
+  ratedAt: string;
+  countedForThreshold: boolean; // 是否计入阈值统计
+}
+
+// 号码评级统计接口
+export interface PhoneRatingStats extends BaseEntity {
+  phoneNumber: string;
+  totalRatings: number; // 总评级次数
+  uniquePackagesCount: number; // 在不同号码包中出现的次数
+  thresholdMet: boolean; // 是否达到阈值
+  finalScore: number | null; // 最终评分
+  lastUpdated: string;
+}
+
+// 防误杀统计概览接口
+export interface AntiFalsePositiveOverview {
+  qualifiedCount: number; // 达到阈值的号码数量
+  unqualifiedCount: number; // 未达到阈值的号码数量
+  totalPhones: number; // 总号码数量
+  effectivenessRate: number; // 防误杀有效率（百分比）
+}
+
+// 防误杀配置表单接口
+export interface AntiFalsePositiveConfigForm {
+  threshold: number;
+  enabled: boolean;
+}
+
+// 号码防误杀状态枚举
+export type AntiFalsePositiveStatus = 'qualified' | 'unqualified' | 'pending';
+
+// 号码评级状态筛选选项
+export interface PhoneRatingFilters extends FilterOptions {
+  antiFalsePositiveStatus?: AntiFalsePositiveStatus;
+  minRatings?: number;
+  maxRatings?: number;
+  thresholdMet?: boolean;
+}

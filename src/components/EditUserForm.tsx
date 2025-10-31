@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Phone, Building, Shield } from 'lucide-react';
 import { UserRole, UserStatus, User as UserType, EditUserForm as EditUserFormData } from '../types/auth';
+import { isValidEmail, validateUserName } from '../utils/validators';
 
 interface EditUserFormProps {
   isOpen: boolean;
@@ -40,13 +41,16 @@ const EditUserForm: React.FC<EditUserFormProps> = ({
   const validateForm = (): boolean => {
     const newErrors: Partial<EditUserFormData> = {};
 
-    if (!formData.name.trim()) {
-      newErrors.name = '请输入用户姓名';
+    // 验证用户名
+    const nameValidation = validateUserName(formData.name);
+    if (!nameValidation.isValid) {
+      newErrors.name = nameValidation.error;
     }
 
+    // 验证邮箱
     if (!formData.email.trim()) {
       newErrors.email = '请输入邮箱地址';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    } else if (!isValidEmail(formData.email)) {
       newErrors.email = '请输入有效的邮箱地址';
     }
 

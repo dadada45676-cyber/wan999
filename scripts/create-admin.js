@@ -111,16 +111,16 @@ async function createAdminUser() {
 async function createUserProfile(userId, email, name) {
   const { error } = await supabase
     .from('user_profiles')
-    .insert({
+    .upsert({
       id: userId,
       email: email,
       name: name,
       role: 'admin',
       status: 'active',
-      permissions: ['*'], // 管理员拥有所有权限
       must_change_password: false,
-      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
+    }, {
+      onConflict: 'email'
     })
 
   if (error) {

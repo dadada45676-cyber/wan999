@@ -172,6 +172,39 @@ export const priorityColors = {
   }
 }
 
+// 常用颜色常量
+export const commonColors = {
+  // 等级颜色
+  grades: {
+    SS: '#dc2626',
+    S: '#ea580c', 
+    A: '#10b981',
+    B: '#3b82f6',
+    C: '#f59e0b',
+    D: '#ef4444',
+    E: '#6b7280'
+  },
+  
+  // 系统主色调
+  system: {
+    primary: '#6366f1',
+    secondary: '#8b5cf6',
+    accent: '#06b6d4',
+    success: '#10b981',
+    warning: '#f59e0b',
+    error: '#ef4444',
+    info: '#3b82f6',
+    gray: '#6b7280'
+  },
+
+  // 图表边框和网格
+  chart: {
+    grid: '#e2e8f0',
+    axis: '#64748b',
+    border: '#e2e8f0'
+  }
+}
+
 // 数据可视化颜色系统
 export const chartColors = {
   // 主要图表颜色

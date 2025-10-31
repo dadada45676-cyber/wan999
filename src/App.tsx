@@ -5,13 +5,13 @@ import Dashboard from './pages/Dashboard'
 import PackageManagement from './pages/PackageManagement'
 import DataAnalysis from './pages/DataAnalysis'
 import PhoneManagement from './pages/PhoneManagement'
-import ReportCenter from './pages/ReportCenter'
 import SystemSettings from './pages/SystemSettings'
 import LoginPage from './pages/LoginPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicRoute from './components/PublicRoute'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import { useAuth, useAuthActions } from './store/auth'
+import { useAppStore } from './store'
 
 function App() {
   const { isAuthenticated, user, isLoading } = useAuth()
@@ -111,16 +111,7 @@ function App() {
           } 
         />
         
-        <Route 
-          path="/reports" 
-          element={
-            <ProtectedRoute>
-              <Layout>
-                <ReportCenter />
-              </Layout>
-            </ProtectedRoute>
-          } 
-        />
+
         
         <Route 
           path="/settings" 

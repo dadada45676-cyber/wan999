@@ -119,7 +119,6 @@ export const PERMISSIONS = {
   PAGE_PHONE: 'page.phone',         // 号码管理页面全部功能
   PAGE_USER: 'page.user',           // 用户管理页面全部功能
   PAGE_SETTINGS: 'page.settings',   // 系统设置页面全部功能
-  PAGE_REPORT: 'page.report',       // 报告中心页面全部功能
   PAGE_ANALYSIS: 'page.analysis'    // 数据分析页面全部功能
 } as const
 
@@ -130,13 +129,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     PERMISSIONS.PAGE_PHONE,     // 号码管理
     PERMISSIONS.PAGE_USER,      // 用户管理
     PERMISSIONS.PAGE_SETTINGS,  // 系统设置
-    PERMISSIONS.PAGE_REPORT,    // 报告中心
     PERMISSIONS.PAGE_ANALYSIS   // 数据分析
   ],
   operator: [
     PERMISSIONS.PAGE_PACKAGE,   // 号码包管理
     PERMISSIONS.PAGE_PHONE,     // 号码管理
-    PERMISSIONS.PAGE_REPORT,    // 报告中心
     PERMISSIONS.PAGE_ANALYSIS   // 数据分析
     // 注意：操作员没有用户管理和系统设置权限
   ]

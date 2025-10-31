@@ -75,6 +75,8 @@ const LoginPage: React.FC = () => {
     }
   }, [error, clearError])
 
+
+
   // 表单验证
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {}
@@ -264,6 +266,8 @@ const LoginPage: React.FC = () => {
                 </div>
               </div>
             )}
+
+
 
             {/* 登录表单 */}
             <form onSubmit={handleSubmit} className="space-y-6">

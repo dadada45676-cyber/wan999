@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from 'recharts'
-import { Calendar, Download, Filter, TrendingUp, TrendingDown, Award, Package, Smartphone, Globe, Users, Target, Clock, CheckCircle, Trophy, Star, Medal, ChevronUp, ChevronDown, Eye, EyeOff, Hash } from 'lucide-react'
+import { Calendar, Package, Smartphone, Globe, Users, Target, Clock, ChevronUp, ChevronDown, Eye, Download, TrendingUp, TrendingDown, Filter } from 'lucide-react'
 import { useAppStore } from '../store'
 import { useCountry } from '../store/country'
 
@@ -17,7 +16,8 @@ const DataAnalysis: React.FC = () => {
     phoneScores, 
     addPackage, 
     addPhoneRating, 
-    addPhoneScore 
+    addPhoneScore,
+    getPackageGrade
   } = useAppStore()
   
   // 国家选择状态
@@ -47,6 +47,12 @@ const DataAnalysis: React.FC = () => {
       sortOrder: 'desc' as 'asc' | 'desc'
     },
     sources: {
+      collapsed: false,
+      showAll: false,
+      sortBy: 'conversionRate',
+      sortOrder: 'desc' as 'asc' | 'desc'
+    },
+    sendTimes: {
       collapsed: false,
       showAll: false,
       sortBy: 'conversionRate',
@@ -122,28 +128,48 @@ const DataAnalysis: React.FC = () => {
     }
   }, [filteredPackages])
 
-  // 等级分布统计（基于PRD的评级标准）
-  const gradeDistribution = useMemo(() => {
-    const distribution = {
-      SS: filteredPackages.filter(p => p.conversion_rate >= 50).length,
-      S: filteredPackages.filter(p => p.conversion_rate >= 30 && p.conversion_rate < 50).length,
-      A: filteredPackages.filter(p => p.conversion_rate >= 20 && p.conversion_rate < 30).length,
-      B: filteredPackages.filter(p => p.conversion_rate >= 16 && p.conversion_rate < 20).length,
-      C: filteredPackages.filter(p => p.conversion_rate >= 10 && p.conversion_rate < 16).length,
-      D: filteredPackages.filter(p => p.conversion_rate < 10).length,
+  // 等级分布统计状态
+  const [gradeDistribution, setGradeDistribution] = useState<Array<{name: string, value: number, color: string}>>([])
+
+  // 计算等级分布（使用配置驱动的评级标准）
+  useEffect(() => {
+    const calculateGradeDistribution = async () => {
+      const distribution: Record<string, number> = {}
+      
+      // 使用配置驱动的评级计算
+      for (const pkg of filteredPackages) {
+        try {
+          const grade = await getPackageGrade(pkg.conversion_rate)
+          distribution[grade] = (distribution[grade] || 0) + 1
+        } catch (error) {
+          // 降级到默认逻辑
+          let grade = 'D'
+          if (pkg.conversion_rate >= 50) grade = 'SS'
+          else if (pkg.conversion_rate >= 30) grade = 'S'
+          else if (pkg.conversion_rate >= 20) grade = 'A'
+          else if (pkg.conversion_rate >= 16) grade = 'B'
+          else if (pkg.conversion_rate >= 10) grade = 'C'
+          
+          distribution[grade] = (distribution[grade] || 0) + 1
+        }
+      }
+      
+      const result = Object.entries(distribution).map(([grade, count]) => ({
+        name: `${grade}级`,
+        value: count,
+        color: grade === 'SS' ? '#dc2626' :
+               grade === 'S' ? '#ea580c' :
+               grade === 'A' ? '#ca8a04' :
+               grade === 'B' ? '#16a34a' :
+               grade === 'C' ? '#2563eb' :
+               '#6b7280'
+      }))
+      
+      setGradeDistribution(result)
     }
-    
-    return Object.entries(distribution).map(([grade, count]) => ({
-      name: `${grade}级`,
-      value: count,
-      color: grade === 'SS' ? '#dc2626' :
-             grade === 'S' ? '#ea580c' :
-             grade === 'A' ? '#ca8a04' :
-             grade === 'B' ? '#16a34a' :
-             grade === 'C' ? '#2563eb' :
-             '#6b7280'
-    }))
-  }, [filteredPackages])
+
+    calculateGradeDistribution()
+  }, [filteredPackages, getPackageGrade])
 
   // 趋势数据（最近7天）
   const trendData = useMemo(() => {
@@ -270,17 +296,87 @@ const DataAnalysis: React.FC = () => {
         ...item
       }))
 
+    // 发送时间排行榜数据
+    const sendTimeStats = filteredPackages.reduce((acc, pkg) => {
+      // 解析发送时间，提取小时段
+      const sendTime = new Date(pkg.sendTime)
+      const hour = sendTime.getHours()
+      
+      // 将24小时分为12个2小时时间段
+      let timeSlot = ''
+      if (hour >= 0 && hour < 2) {
+        timeSlot = '00:00-02:00'
+      } else if (hour >= 2 && hour < 4) {
+        timeSlot = '02:00-04:00'
+      } else if (hour >= 4 && hour < 6) {
+        timeSlot = '04:00-06:00'
+      } else if (hour >= 6 && hour < 8) {
+        timeSlot = '06:00-08:00'
+      } else if (hour >= 8 && hour < 10) {
+        timeSlot = '08:00-10:00'
+      } else if (hour >= 10 && hour < 12) {
+        timeSlot = '10:00-12:00'
+      } else if (hour >= 12 && hour < 14) {
+        timeSlot = '12:00-14:00'
+      } else if (hour >= 14 && hour < 16) {
+        timeSlot = '14:00-16:00'
+      } else if (hour >= 16 && hour < 18) {
+        timeSlot = '16:00-18:00'
+      } else if (hour >= 18 && hour < 20) {
+        timeSlot = '18:00-20:00'
+      } else if (hour >= 20 && hour < 22) {
+        timeSlot = '20:00-22:00'
+      } else {
+        timeSlot = '22:00-24:00'
+      }
+      
+      if (!acc[timeSlot]) {
+        acc[timeSlot] = { 
+          totalPhones: 0, 
+          totalFirstCharge: 0, 
+          packageCount: 0 
+        }
+      }
+      acc[timeSlot].totalPhones += pkg.phoneCount
+      acc[timeSlot].totalFirstCharge += pkg.firstChargeCount
+      acc[timeSlot].packageCount += 1
+      return acc
+    }, {} as Record<string, { totalPhones: number, totalFirstCharge: number, packageCount: number }>)
+    
+    const sendTimesData = Object.entries(sendTimeStats)
+      .map(([timeSlot, stats]) => ({
+        name: timeSlot,
+        conversionRate: stats.totalPhones > 0 ? Math.round((stats.totalFirstCharge / stats.totalPhones) * 10000) : 0,
+        totalPhones: stats.totalPhones,
+        totalFirstCharge: stats.totalFirstCharge,
+        packageCount: stats.packageCount
+      }))
+      .sort((a, b) => {
+        // 按时间段排序
+        const timeOrder = [
+          '00:00-02:00', '02:00-04:00', '04:00-06:00', '06:00-08:00',
+          '08:00-10:00', '10:00-12:00', '12:00-14:00', '14:00-16:00',
+          '16:00-18:00', '18:00-20:00', '20:00-22:00', '22:00-24:00'
+        ]
+        return timeOrder.indexOf(a.name) - timeOrder.indexOf(b.name)
+      })
+      .map((item, index) => ({
+        rank: index + 1,
+        ...item
+      }))
+
     return {
       packages: packagesData,
       smsProviders: smsProvidersData,
       gamePlatforms: gamePlatformsData,
-      sources: sourcesData
+      sources: sourcesData,
+      sendTimes: sendTimesData
     }
   }, [filteredPackages])
 
   // 状态更新函数
   const updateRankingState = useCallback((
-    rankingType: 'packages' | 'smsProviders' | 'gamePlatforms' | 'sources',
+    rankingType: 'packages' | 'smsProviders' | 'gamePlatforms' | 'sources' | 'sendTimes',
     updates: Partial<typeof rankingStates.packages>
   ) => {
     setRankingStates(prev => ({
@@ -294,7 +390,7 @@ const DataAnalysis: React.FC = () => {
 
   // 排序处理函数
   const handleSort = useCallback((
-    rankingType: 'packages' | 'smsProviders' | 'gamePlatforms' | 'sources',
+    rankingType: 'packages' | 'smsProviders' | 'gamePlatforms' | 'sources' | 'sendTimes',
     sortKey: string, 
     sortDirection: 'asc' | 'desc'
   ) => {
@@ -308,7 +404,7 @@ const DataAnalysis: React.FC = () => {
   const processedRankingData = useMemo(() => {
     const processData = (
       data: any[], 
-      rankingType: 'packages' | 'smsProviders' | 'gamePlatforms' | 'sources'
+      rankingType: 'packages' | 'smsProviders' | 'gamePlatforms' | 'sources' | 'sendTimes'
     ) => {
       const state = rankingStates[rankingType]
       
@@ -344,7 +440,8 @@ const DataAnalysis: React.FC = () => {
       packages: processData(allRankingData.packages, 'packages'),
       smsProviders: processData(allRankingData.smsProviders, 'smsProviders'),
       gamePlatforms: processData(allRankingData.gamePlatforms, 'gamePlatforms'),
-      sources: processData(allRankingData.sources, 'sources')
+      sources: processData(allRankingData.sources, 'sources'),
+      sendTimes: processData(allRankingData.sendTimes, 'sendTimes')
     }
   }, [allRankingData, rankingStates])
 
@@ -499,7 +596,8 @@ const DataAnalysis: React.FC = () => {
               { key: 'packages', label: '📦 包排行', icon: Package },
               { key: 'smsProviders', label: '📱 短信商', icon: Smartphone },
               { key: 'gamePlatforms', label: '🎮 游戏平台', icon: Globe },
-              { key: 'sources', label: '🔗 来源', icon: Users }
+              { key: 'sources', label: '🔗 来源', icon: Users },
+              { key: 'sendTimes', label: '🕐 发送时间', icon: Clock }
             ].map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -519,9 +617,10 @@ const DataAnalysis: React.FC = () => {
           { key: 'packages', title: '📦 包排行榜', icon: Package, data: processedRankingData.packages },
           { key: 'smsProviders', title: '📱 短信商排行榜', icon: Smartphone, data: processedRankingData.smsProviders },
           { key: 'gamePlatforms', title: '🎮 游戏平台排行榜', icon: Globe, data: processedRankingData.gamePlatforms },
-          { key: 'sources', title: '🔗 来源排行榜', icon: Users, data: processedRankingData.sources }
+          { key: 'sources', title: '🔗 来源排行榜', icon: Users, data: processedRankingData.sources },
+          { key: 'sendTimes', title: '⏰ 发送时间排行榜', icon: Clock, data: processedRankingData.sendTimes }
         ].map(({ key, title, icon: Icon, data }) => {
-          const rankingType = key as 'packages' | 'smsProviders' | 'gamePlatforms' | 'sources'
+          const rankingType = key as 'packages' | 'smsProviders' | 'gamePlatforms' | 'sources' | 'sendTimes'
           const state = rankingStates[rankingType]
           const allData = allRankingData[rankingType]
           

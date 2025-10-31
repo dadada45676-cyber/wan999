@@ -2,6 +2,8 @@ import { supabase } from '../lib/supabase'
 import { APIUtils } from '../utils/api'
 import { log as logger } from '../utils/logger'
 import type { SystemSettings, ServiceResponse } from '../types'
+import { RATING_GRADES } from '../constants'
+import { configService } from './configService'
 
 export interface SettingsUpdateRequest {
   category: string
@@ -11,61 +13,68 @@ export interface SettingsUpdateRequest {
 export class SettingsService {
   private static readonly SETTINGS_ID = 'default'
 
-  // 获取系统设置
+  // 获取系统设置 - 使用configService统一管理
   static async getSettings(): Promise<ServiceResponse<SystemSettings>> {
     const result = await APIUtils.apiCall(
       async () => {
         try {
-          // 查询所有系统设置
-          const { data, error } = await supabase
+          // 使用configService获取所有配置
+          const configs = await configService.getAllConfigs()
+          
+          // 获取其他系统设置（非核心配置）
+          const { data: otherSettings, error } = await supabase
             .from('system_settings')
             .select('setting_key, setting_value')
+            .not('setting_key', 'in', '(packageGradeThresholds,ratingScoreMap,finalGradeConfig,antiFalsePositiveConfig,scoringAlgorithm)')
 
-          if (error) {
-            logger.warn('[SettingsService] 数据库查询失败，使用默认设置:', error.message)
-            // 数据库查询失败时返回默认设置
-            return { success: true, data: this.getDefaultSettings() }
+          let additionalSettings = {}
+          if (!error && otherSettings) {
+            additionalSettings = this.mapAdditionalSettings(otherSettings)
           }
 
-          if (!data || data.length === 0) {
-            logger.info('[SettingsService] 未找到系统设置，返回默认设置')
-            // 设置不存在，返回默认设置
-            return { success: true, data: this.getDefaultSettings() }
+          // 组合所有配置
+          const settings: SystemSettings = {
+            packageGradeThresholds: this.convertPackageGradeThresholds(configs.package_grade_thresholds),
+            finalGradeConfig: configs.final_grade_config,
+            ratingScoreMap: this.convertRatingScoreMap(configs.rating_score_mapping),
+            antiFalsePositiveConfig: configs.anti_false_positive_config,
+            scoringAlgorithm: this.convertScoringAlgorithm(configs.scoring_algorithm_config),
+            ...additionalSettings,
+            // 提供默认的其他设置
+            breakEvenConfig: additionalSettings.breakEvenConfig || {
+              threshold: 16,
+              warningLine: 12,
+              dangerLine: 8,
+              unit: '万分转化数',
+              description: '基于万分转化数的保本线配置'
+            },
+            countryOptions: additionalSettings.countryOptions || ['中国', '美国', '英国', '日本', '韩国'],
+            ratingOptions: additionalSettings.ratingOptions || ['1星', '2星', '3星', '4星', '5星'],
+            smsProviders: additionalSettings.smsProviders || ['移动', '联通', '电信', '虚拟运营商'],
+            sources: additionalSettings.sources || ['来源1', '来源2', '来源3', '来源4'],
+            gamePlatforms: additionalSettings.gamePlatforms || ['平台A', '平台B', '平台C', '平台D'],
+            minRatingCount: additionalSettings.minRatingCount ?? 5,
+            timeDecayFactor: additionalSettings.timeDecayFactor ?? 0.95
           }
 
-          // 将数据库记录转换为 SystemSettings 对象
-          const settings = this.mapDatabaseRecordsToSettings(data)
-          logger.info('[SettingsService] 成功获取系统设置')
           return { success: true, data: settings }
-        } catch (dbError) {
-          logger.warn('[SettingsService] 数据库操作异常，使用默认设置:', dbError)
-          // 任何数据库异常都返回默认设置，确保系统可用
-          return { success: true, data: this.getDefaultSettings() }
+        } catch (error) {
+          logger.error('[SettingsService] 获取系统设置失败:', error)
+          throw error
         }
       },
       {
-        cache: false, // 暂时禁用缓存
-        timeout: 5000, // 减少超时时间到5秒
-        retries: 1, // 减少重试次数
+        cache: false,
+        timeout: 10000,
+        retries: 2,
         operation: 'getSystemSettings'
       }
     )
-    
-    // 确保总是返回有效数据
-    if (result.success && result.data?.data) {
-      return {
-        success: true,
-        data: result.data.data,
-        error: undefined
-      }
-    } else {
-      // 如果API调用失败，返回默认设置
-      logger.warn('[SettingsService] API调用失败，返回默认设置')
-      return {
-        success: true,
-        data: this.getDefaultSettings(),
-        error: undefined
-      }
+
+    return {
+      success: result.success,
+      data: result.data?.data,
+      error: result.error?.message
     }
   }
 
@@ -96,9 +105,7 @@ export class SettingsService {
         return this.getDefaultSettings();
       }
 
-      logger.info('[SettingsService] 成功获取系统设置，记录数:', data.length);
       const settings = this.mapDatabaseRecordsToSettings(data);
-      logger.info('[SettingsService] 系统设置转换完成');
       return settings;
 
     } catch (error) {
@@ -265,6 +272,17 @@ export class SettingsService {
               .select()
           )
         }
+        if (updates.antiFalsePositiveConfig) {
+          updatePromises.push(
+            supabase
+              .from('system_settings')
+              .upsert(
+                { setting_key: 'anti_false_positive_config', setting_value: updates.antiFalsePositiveConfig, category: 'security' },
+                { onConflict: 'setting_key' }
+              )
+              .select()
+          )
+        }
 
         // 执行所有更新
         const results = await Promise.all(updatePromises)
@@ -376,6 +394,10 @@ export class SettingsService {
             timeDecayFactor: settings.timeDecayFactor,
             ratingScoreMap: settings.ratingScoreMap
           }
+        case 'security':
+          return {
+            antiFalsePositiveConfig: settings.antiFalsePositiveConfig
+          }
         case 'dropdown':
           return {
             countryOptions: settings.countryOptions,
@@ -429,6 +451,11 @@ export class SettingsService {
             updates.ratingScoreMap = categorySettings.ratingScoreMap
           }
           break
+        case 'security':
+          if (categorySettings.antiFalsePositiveConfig) {
+            updates.antiFalsePositiveConfig = categorySettings.antiFalsePositiveConfig
+          }
+          break
         case 'dropdown':
           if (categorySettings.countryOptions) {
             updates.countryOptions = categorySettings.countryOptions
@@ -475,7 +502,8 @@ export class SettingsService {
       { setting_key: 'game_platforms', setting_value: defaultSettings.gamePlatforms, category: 'dropdown' },
       { setting_key: 'min_rating_count', setting_value: defaultSettings.minRatingCount, category: 'algorithm' },
       { setting_key: 'time_decay_factor', setting_value: defaultSettings.timeDecayFactor, category: 'algorithm' },
-      { setting_key: 'rating_score_map', setting_value: defaultSettings.ratingScoreMap, category: 'algorithm' }
+      { setting_key: 'rating_score_map', setting_value: defaultSettings.ratingScoreMap, category: 'algorithm' },
+      { setting_key: 'anti_false_positive_config', setting_value: defaultSettings.antiFalsePositiveConfig, category: 'security' }
     ]
 
     const { data, error } = await supabase
@@ -491,7 +519,88 @@ export class SettingsService {
     return { success: true, data: settings }
   }
 
-  // 获取默认设置
+  // 配置转换辅助方法
+  private static convertPackageGradeThresholds(thresholds: any): any {
+    // 将configService的格式转换为SystemSettings期望的格式
+    if (!thresholds) return {}
+    
+    const converted = {}
+    Object.keys(thresholds).forEach(grade => {
+      if (thresholds[grade] && typeof thresholds[grade].min === 'number') {
+        converted[grade] = {
+          min: thresholds[grade].min,
+          max: grade === 'SS' ? 100 : (thresholds[grade].max || thresholds[grade].min + 10)
+        }
+      }
+    })
+    return converted
+  }
+
+  private static convertRatingScoreMap(scoreMap: any): any {
+    // 确保评级分数映射格式正确
+    return scoreMap || {}
+  }
+
+  private static convertScoringAlgorithm(algorithmConfig: any): any {
+    // 转换评分算法配置
+    if (!algorithmConfig) {
+      return {
+        type: 'weighted',
+        weights: {
+          ratingScore: 0.6,
+          packageSize: 0.3,
+          timeDecay: 0.1
+        }
+      }
+    }
+
+    return {
+      type: algorithmConfig.type || 'weighted',
+      weights: algorithmConfig.weights || {
+        ratingScore: 0.6,
+        packageSize: 0.3,
+        timeDecay: 0.1
+      }
+    }
+  }
+
+  private static mapAdditionalSettings(records: any[]): any {
+    const settings = {}
+    records.forEach(record => {
+      const key = record.setting_key
+      const value = record.setting_value
+      
+      switch (key) {
+        case 'break_even_config':
+          settings['breakEvenConfig'] = value
+          break
+        case 'country_options':
+          settings['countryOptions'] = value
+          break
+        case 'rating_options':
+          settings['ratingOptions'] = value
+          break
+        case 'sms_providers':
+          settings['smsProviders'] = value
+          break
+        case 'sources':
+          settings['sources'] = value
+          break
+        case 'game_platforms':
+          settings['gamePlatforms'] = value
+          break
+        case 'min_rating_count':
+          settings['minRatingCount'] = value
+          break
+        case 'time_decay_factor':
+          settings['timeDecayFactor'] = value
+          break
+      }
+    })
+    return settings
+  }
+
+  // 获取默认设置（已弃用，保留用于向后兼容）
   private static getDefaultSettings(): SystemSettings {
     return {
       packageGradeThresholds: {
@@ -505,7 +614,7 @@ export class SettingsService {
         threshold: 16,
         warningLine: 12,
         dangerLine: 8,
-        unit: '万分之',
+        unit: '万分转化数',
         description: '基于万分转化数的保本线配置'
       },
       finalGradeConfig: [
@@ -536,6 +645,11 @@ export class SettingsService {
         3: 60,
         4: 80,
         5: 100
+      },
+      antiFalsePositiveConfig: {
+        threshold: 3,
+        enabled: true,
+        description: '号码需要在N个不同的号码包中出现才会触发综合评分计算'
       }
     }
   }
@@ -587,7 +701,11 @@ export class SettingsService {
           settings.timeDecayFactor = value ?? defaultSettings.timeDecayFactor
           break
         case 'rating_score_map':
+        case 'rating_score_mapping':
           settings.ratingScoreMap = value || defaultSettings.ratingScoreMap
+          break
+        case 'anti_false_positive_config':
+          settings.antiFalsePositiveConfig = value || defaultSettings.antiFalsePositiveConfig
           break
       }
     })
@@ -595,5 +713,234 @@ export class SettingsService {
     return settings
   }
 
+  // 获取评级分数映射配置 - 使用configService
+  static async getRatingScoreMapping(): Promise<ServiceResponse<Record<string, number>>> {
+    const result = await APIUtils.apiCall(
+      async () => {
+        try {
+          const ratingScoreMap = await configService.getRatingScoreMap()
+          logger.info('[SettingsService] 成功获取评级分数映射')
+          return { success: true, data: ratingScoreMap }
+        } catch (error) {
+          logger.error('[SettingsService] 获取评级分数映射失败:', error)
+          throw error
+        }
+      },
+      {
+        cache: false,
+        timeout: 5000,
+        retries: 2,
+        operation: 'getRatingScoreMapping'
+      }
+    )
+    
+    return {
+      success: result.success,
+      data: result.data?.data,
+      error: result.error?.message
+    }
+  }
+
+  // 更新评级分数映射配置 - 使用configService
+  static async updateRatingScoreMapping(scoreMap: Record<string, number>): Promise<ServiceResponse<Record<string, number>>> {
+    const result = await APIUtils.apiCall(
+      async () => {
+        // 验证用户权限
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          throw new Error('用户未登录')
+        }
+
+        // 检查用户是否为管理员
+        const { data: userProfile, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+
+        if (profileError || !userProfile || userProfile.role !== 'admin') {
+          throw new Error('权限不足：只有管理员可以修改评级分数映射配置')
+        }
+
+        logger.info('[SettingsService] 开始更新评级分数映射配置，用户权限验证通过', { userId: user.id, role: userProfile.role })
+
+        // 使用configService更新配置
+        const updateResult = await configService.updateConfig(
+          'ratingScoreMap',
+          scoreMap,
+          configService.validateConfig.bind(configService, 'rating_score_map')
+        )
+
+        if (!updateResult.success) {
+          throw new Error(`更新评级分数映射失败: ${updateResult.validation?.errors?.join(', ') || '未知错误'}`)
+        }
+
+        // 清除相关缓存
+        configService.clearCache('ratingScoreMap')
+        APIUtils.cache.delete('settings:get')
+        
+        logger.info('[SettingsService] 评级分数映射配置更新成功')
+        return { success: true, data: scoreMap }
+      },
+      {
+        cache: false,
+        retries: 2,
+        operation: 'updateRatingScoreMapping'
+      }
+    )
+    
+    return {
+      success: result.success,
+      data: result.data?.data,
+      error: result.error?.message
+    }
+  }
+
+  // 重置评级分数映射为默认值
+  static async resetRatingScoreMappingToDefault(): Promise<ServiceResponse<Record<string, number>>> {
+    const defaultMap = { 'SS': 100, 'S': 85, 'A': 70, 'B': 55, 'C': 40, 'D': 25 };
+    return await this.updateRatingScoreMapping(defaultMap);
+  }
+
+  // 验证评级分数映射配置
+  static validateRatingScoreMapping(scoreMap: Record<string, number>): { isValid: boolean; errors: Record<string, string> } {
+    const errors: Record<string, string> = {};
+    const ratings = RATING_GRADES;
+    const scores = ratings.map(r => scoreMap[r]);
+    
+    // 范围验证
+    const ranges = {
+      'SS': [80, 100], 'S': [70, 95], 'A': [60, 85],
+      'B': [45, 70], 'C': [30, 55], 'D': [10, 40]
+    };
+    
+    ratings.forEach(rating => {
+      const score = scoreMap[rating];
+      const [min, max] = ranges[rating as keyof typeof ranges];
+      if (score < min || score > max) {
+        errors[rating] = `分数必须在${min}-${max}分之间`;
+      }
+    });
+    
+    // 严格递减验证
+    for (let i = 0; i < scores.length - 1; i++) {
+      if (scores[i] <= scores[i + 1]) {
+        errors[ratings[i]] = `分数必须高于${ratings[i + 1]}级`;
+      }
+    }
+    
+    // 最小差距验证
+    for (let i = 0; i < scores.length - 1; i++) {
+      if (scores[i] - scores[i + 1] < 5) {
+        errors[ratings[i]] = `与${ratings[i + 1]}级差距不能小于5分`;
+      }
+    }
+    
+    return { isValid: Object.keys(errors).length === 0, errors };
+  }
+
+  // 获取防误杀配置 - 使用configService
+  static async getAntiFalsePositiveConfig(): Promise<ServiceResponse<{ threshold: number; enabled: boolean; description: string }>> {
+    const result = await APIUtils.apiCall(
+      async () => {
+        try {
+          const config = await configService.getAntiFalsePositiveConfig()
+          const formattedConfig = {
+            threshold: config.threshold,
+            enabled: config.enabled,
+            description: '号码需要在N个不同的号码包中出现才会触发综合评分计算'
+          }
+          logger.info('[SettingsService] 成功获取防误杀配置')
+          return { success: true, data: formattedConfig }
+        } catch (error) {
+          logger.error('[SettingsService] 获取防误杀配置失败:', error)
+          throw error
+        }
+      },
+      {
+        cache: false,
+        timeout: 5000,
+        retries: 2,
+        operation: 'getAntiFalsePositiveConfig'
+      }
+    )
+    
+    return {
+      success: result.success,
+      data: result.data?.data,
+      error: result.error?.message
+    }
+  }
+
+  // 更新防误杀配置 - 使用configService
+  static async updateAntiFalsePositiveConfig(config: { threshold: number; enabled: boolean; description: string }): Promise<ServiceResponse<{ threshold: number; enabled: boolean; description: string }>> {
+    const result = await APIUtils.apiCall(
+      async () => {
+        // 验证用户权限
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          throw new Error('用户未登录')
+        }
+
+        // 检查用户是否为管理员
+        const { data: userProfile, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+
+        if (profileError || !userProfile || userProfile.role !== 'admin') {
+          throw new Error('权限不足：只有管理员可以修改防误杀配置')
+        }
+
+        logger.info('[SettingsService] 开始更新防误杀配置，用户权限验证通过', { userId: user.id, role: userProfile.role })
+
+        // 使用configService更新配置
+        const updateConfig = {
+          threshold: config.threshold,
+          enabled: config.enabled
+        }
+        
+        await configService.updateAntiFalsePositiveConfig(updateConfig)
+        
+        logger.info('[SettingsService] 防误杀配置更新成功')
+        return { success: true, data: config }
+      },
+      {
+        cache: false,
+        retries: 2,
+        operation: 'updateAntiFalsePositiveConfig'
+      }
+    )
+    
+    return {
+      success: result.success,
+      data: result.data?.data,
+      error: result.error?.message
+    }
+  }
+
+  // 重置防误杀配置为默认值
+  static async resetAntiFalsePositiveConfigToDefault(): Promise<ServiceResponse<{ threshold: number; enabled: boolean; description: string }>> {
+    const defaultConfig = { threshold: 3, enabled: true, description: '号码需要在N个不同的号码包中出现才会触发综合评分计算' };
+    return await this.updateAntiFalsePositiveConfig(defaultConfig);
+  }
+
+  // 验证防误杀配置
+  static validateAntiFalsePositiveConfig(config: { threshold: number; enabled: boolean; description: string }): { isValid: boolean; errors: Record<string, string> } {
+    const errors: Record<string, string> = {};
+    
+    // 阈值验证
+    if (config.threshold < 1 || config.threshold > 10) {
+      errors.threshold = '防误杀阈值必须在1-10之间';
+    }
+    
+    // 描述验证
+    if (!config.description || config.description.trim().length === 0) {
+      errors.description = '描述不能为空';
+    }
+    
+    return { isValid: Object.keys(errors).length === 0, errors };
+  }
 
 }
